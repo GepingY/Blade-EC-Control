@@ -81,25 +81,34 @@ Just send the URL of this repository to a AI you think is the smartest and send 
 #### Before You Flash (Mandatory Checklist)
 1. **Verify your backup & patched binary:**
    - Make sure your dumped stock backup (`ec-rom-00000-3ffff.bin`) is saved off-machine (e.g., on a USB drive).
-   - **Mirror Flag (`0x0008D = 0xFF`):** On Razer Blades that mirror EC firmware from an external SPI flash chip (`GD25Q64`) into the `IT8390E`'s internal 256 KiB eFlash on boot (such as `RZ09-0328`), a raw dump from internal eFlash has byte `0x0008D = 0x00`. **Both your patched `.bin` and your stock rollback `.bin` must have `0x0008D` set to `0xFF`**, or the EC will silently ignore the flash on reboot.
-   - **External SPI Cache Versions:** If you modified mode/fan/power tables (`0x3D000`) or runtime defaults (`0x2098C` / `0x10070`), make sure the internal SPI cache version checks (`0x3FE000` and `0x050000`) were bumped so the EC rebuilds its cached tables on first boot.
 2. **Prepare the laptop:**
-   - Plug in the **original Razer barrel AC adapter** and make sure battery charge is **> 50%**.
+   - Make sure your laptop won't loss power during the process by plug in charger and make sure battery is full enough
    - Close **Razer Synapse**, **`BladeFanControl.exe`**, **HWiNFO**, **MSI Afterburner**, and any other hardware/sensor monitoring software.
-   - Disable sleep/hibernation and keep an external USB keyboard plugged in as a precaution.
+   - Disable auto sleep/hibernation in windows setting in case your blades decides to sleep
 ---
 #### Option A: Flash on Windows (External Mirror SPI Boards like `RZ09-0328`, or Any `IT8390E` Blade)
 > [!IMPORTANT]
 > **Never run the unpatched `Razer_EC_Flash_v1.03.exe`.** Razer's original flasher has a bug where a verification failure still exits Follow Mode (`0xFC`) and forces a reboot. Always patch it first with `patch_razer_flasher.py`.
-1. **Get & patch Razer's official EC flasher:**
-   - Extract `Razer_EC_Flash_v1.03.exe` and its accompanying `WinRing0x64.sys` / `WinRing0x64.dll` files from an official Razer EC updater package into a working folder.
-   - Run my safety patcher on it:
+
+1. **Unpack Razer's official EC flasher (`Razer_EC_Flash_v1.03.exe`) and patch its verify-failure bug(that's right, razer's own EC updater have bugs):**
+   - Download Razer's official EC updater package [RazerUpdater_v1.1.1.2_CH551-ECv0101.exe](https://rzr.to/iCAmd)
+     *(this works for blades of other model as well)*
+   - **Extract the installer without running the update** using either method:
+     - **Method 1 — 7-Zip (Recommended, never executes the installer):** Right-click `RazerUpdater_v1.1.1.2_CH551-ECv0101.exe` → **7-Zip → Extract to "RazerUpdater_v1.1.1.2_CH551-ECv0101\"** (or open it inside 7-Zip File Manager and drag the payload files out).
+     - **Method 2 — From `%TEMP%`:** Launch `RazerUpdater_v1.1.1.2_CH551-ECv0101.exe` but **stop at the welcome screen (do NOT click Update)**. Press `Win + R`, type `%TEMP%`, press Enter, open the newly created temporary Razer folder, copy the payload files out, and close the updater window.
+   - Create a clean working folder (e.g., `ec_flash\`) and copy **only these 6 files** into it:
+     - `Razer_EC_Flash_v1.03.exe` (`46,592` bytes, SHA-256: `3590f72531078eb9562f8ed864753ea710a1d2723f693923b99b3a981b78f07b`)
+     - `ToolConfig.ini`
+     - `WinRing0x64.dll` & `WinRing0x64.sys`
+     - `WinRing0.dll` & `WinRing0.sys`
+   - **Delete `CH551_EC_01_01.bin` immediately** so you can never accidentally flash the `RZ09-0330` ROM onto your board.
+   - Run our offline `.NET` safety patcher against `Razer_EC_Flash_v1.03.exe`, change the path as needed:
      ```powershell
-     python ec_research/patch_razer_flasher.py --in-exe path/to/Razer_EC_Flash_v1.03.exe
+     python ec_research/patch_razer_flasher.py --in-exe ec_flash/Razer_EC_Flash_v1.03.exe --out-dir ec_flash
      ```
-   - This generates two safe executables in the same folder:
-     - **`Razer_EC_Flash_v1.03_safe.exe`**: Aborts before `0xFC` (Exit Idle) and skips rebooting (`exit code 2`) if post-flash verification ever fails, keeping the EC safely parked in RAM Follow Mode.
-     - **`Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe`**: Used to immediately re-flash without rebooting if `_safe.exe` ever reports a verify mismatch.
+   - This creates two safe executables inside `ec_flash\`:
+     - **`Razer_EC_Flash_v1.03_safe.exe`**: Fixes Razer's verify-failure bug so if verification ever fails, it skips `0xFC` (Exit Idle) and exits with code `2` instead of forcing a reboot into a bad flash.
+     - **`Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe`**: Allows immediate re-flashing in the same Command Prompt if `_safe.exe` ever reports a verification mismatch.
 2. **Configure `ToolConfig.ini`:**
    - Delete any foreign `.bin` files that came with the Razer updater so you cannot accidentally flash the wrong model.
    - Copy your patched `.bin` (and your stock rollback `.bin`) into the flasher folder and edit `ToolConfig.ini`:
@@ -111,7 +120,7 @@ Just send the URL of this repository to a AI you think is the smartest and send 
      ```
      *(Replace `2011` with your own board's `SSID` reported by `EcSioProbe.cmd`!)*
 3. **Allow `WinRing0x64.sys` to load temporarily:**
-   - Because Razer's flasher uses `WinRing0x64.sys`, Windows 11 blocks it by default. Temporarily turn off **Memory Integrity (HVCI)** and the **Microsoft Vulnerable Driver Blocklist** in *Windows Security → Device Security → Core Isolation* and reboot (or boot into a WinPE USB).
+   - Because Razer's flasher uses `WinRing0x64.sys`, Windows 11 blocks it by default. Temporarily turn off **Memory Integrity (HVCI)** and the **Microsoft Vulnerable Driver Blocklist** in *Windows Security → Device Security → Core Isolation* and you must reboot before continue.
 4. **Run the flash:**
    - Open **Command Prompt as Administrator**, `cd` into your flasher folder, and run:
      ```cmd
@@ -120,7 +129,6 @@ Just send the URL of this repository to a AI you think is the smartest and send 
    - **If it prints `Update <your-file>.bin file ok!` (with NO `.......Fail` line):**
      1. Perform a **full Windows shutdown** (do not just click Restart).
      2. Wait **10 seconds**, then press the power button to turn the laptop back on (the EC mirrors the new firmware on cold boot).
-     3. Turn **Memory Integrity (HVCI)** and the **Driver Blocklist** back ON in Windows Security.
    - **If it EVER prints `.......Fail` (`%ERRORLEVEL% == 2`):**
      - **DO NOT reboot or power off!**
      - Immediately run `Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe` in the same Administrator Command Prompt (or point `ToolConfig.ini` to your stock rollback `.bin` first and run `_recovery_in_follow_mode.exe`) until it prints `Update <file> file ok!`.
@@ -147,37 +155,10 @@ If your Blade's `IT8390E-256` flashes internal eFlash directly (`SPI ID == FF FF
 - **Verify live:** Back in Windows (with HVCI re-enabled), double-click **`ec_research/EcVerifyLive.cmd`** (or run `python ec_research/ec_sio_probe.py --verify-live`) to confirm your patched bytes, cache version, and new RPM/power limits are active in live EC RAM.
 - **Rollback to stock anytime:** Flash your stock backup `.bin` (with `0x0008D = 0xFF` on mirror boards) using the exact same steps above. On first boot, the stock firmware detects the bumped cache version and automatically rebuilds the external BIOS SPI caches back to factory defaults.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## 3. What We Discovered (And How This Helps Other Razer Blade Owners)
-
-Even if you own a **different Razer Blade model**, most Intel-era Blades using an **ITE `IT8390E`** embedded controller share the same dumping, analysis, and flashing mechanisms. Here are the key takeaways in plain English:
-
-- **Hidden EC power & fan ceilings**: Each mode (`Balanced`, `Gaming`, `Creator`, `Custom`, `Silent`) lives in a table inside the EC firmware that sets CPU wattage limits (`PL1/PL2`), GPU power policy (`30 W / 80 W / 90 W`), auto fan curves, and manual RPM floors/ceilings. That is why Windows power settings alone cannot raise CPU power above the active EC mode — though lowering CPU wattage from Windows works cleanly without fighting the EC.
-- **The `20%` fan speed rule (`0 RPM` snap)**: The EC enforces a hardware `20%` minimum PWM spin floor (because small 5 V laptop blower fans physically stall below ~15–20% duty). When you set **`0 RPM`**, the fans ramp down below 20% and **snap cleanly to a full stop (`0 RPM`)**. From **`~2000–5500 RPM`**, closed-loop speed control runs smoothly. Speeds between `100` and `~1800 RPM` sit below that 20% floor, so use `0 RPM` for silent stop or `2000+ RPM` for steady spin.
-- **Dump your EC cleanly on Windows 11**: Instead of old blocked drivers (`WinRing0`) or unstable `0x62/0x66` polling (which fights Windows `ACPI.sys`), our dumper (`ec_research/ec_sio_probe.py`) uses the Microsoft-signed **PawnIO** driver to read the EC's built-in read-only mailbox cleanly with Memory Integrity still turned ON.
-- **Two huge EC modding traps we solved**:
-  1. **The mirror flag (`0x0008D = 0xFF`)**: On boards like `RZ09-0328` that mirror EC firmware from an external SPI chip (`GD25Q64`) into the EC's internal flash, a dumped ROM has byte `0x0008D = 0x00`. Unless you flip it to `0xFF` before flashing (including when rolling back to stock!), the EC silently ignores your flash and keeps booting the old copy.
-  2. **Cached tables in BIOS flash**: The EC caches fan/power tables inside external BIOS flash. If you edit EC firmware without bumping the internal cache version numbers, the EC keeps loading the old cached settings instead of your changes.
-- **Bug fixed in Razer's official flasher**: We discovered that Razer's `Razer_EC_Flash_v1.03.exe` still exits flash mode and forces a reboot even when post-flash verification fails. Our patcher (`patch_razer_flasher.py`) fixes this bug offline and builds a companion recovery binary so you can safely retry without ever rebooting into a bad flash.
-- **Pure-Python EC reverse-engineering tools**: Includes an offline `NDS32` disassembler (`dis_nds32.py`) and ROM table analyzer (`analyze_ec_rom.py`) so owners of other `IT8390E` Blades can inspect and compare their own EC dumps.
-
 ---
+**Enjoy!**
+
+
 
 ## ⭐ Support This Project
 
