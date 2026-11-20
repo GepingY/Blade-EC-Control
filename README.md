@@ -2,7 +2,7 @@
 This repo contains:
 - A GUI app to control the fan speed / Mode for many Razer Blades
 - EC Mod tutorial to patch your own EC to unlock all fan speed manual control, Unlock Higher or lower TDP, Change GPU TDP mode
-- Documented discovery for those who is interested on how does the EC of Razer Blade work and how does Razer Synapse communicate with it and how does the EC controls the Razer Blade(For this check FINDINGS.MD)
+- Documented discovery for those who is interested on how does the EC of Razer Blade work and how does Razer Synapse communicate with it and how does the EC controls the Razer Blade(For this check [FINDINGS.MD](https://github.com/GepingY/Blade-EC-Control/blob/main/FINDINGS.md))
 ---
 
 ## 1. The GUI App
