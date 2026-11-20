@@ -10,7 +10,8 @@
 - **Model / Board**: Razer Blade 15 Base Model (Early 2020), **`RZ09-0328`** (`DA550-MB`), Board **`SSID 0x2011`**
 - **CPU / GPU**: Intel Core i7-10750H / NVIDIA RTX 2070 with Max-Q Design
 - **BIOS / OS**: BIOS `01.06`, Windows 11 Pro
-- **Embedded Controller**: **ITE `IT8390E-256`** (`Chip ID 0x8390`, `reg 0x22 = 0x82`), firmware **`ITE8390EC-V01.00`** (256 KiB internal eFlash mirrored from external `GD25Q64` SPI flash, 16/32-bit mixed AndesCore `NDS32`)
+- **EC**: **ITE `IT8390E-256`** (`Chip ID 0x8390`, `reg 0x22 = 0x82`), firmware **`ITE8390EC-V01.00`** (256 KiB internal eFlash mirrored from external `GD25Q64` SPI flash, 16/32-bit mixed AndesCore `NDS32`)<img width="1949" height="1288" alt="IMG_3520" src="https://github.com/user-attachments/assets/0faae902-c4d1-4efa-af0f-2d6c405b4d93" />
+
 - **USB HID Interface**: `VID 0x1532`, `PID 0x0255` (front-end MCU bridging Synapse HID `0x0D` packets into `IT8390E` Bank 0 shared registers)
 
 ### Top 9 Non-Obvious Gotchas
@@ -57,7 +58,7 @@
 
 When `[0x8035F]` (`Mode`, `0..7`) changes, `0x120ca(mode)` loads `0x200` (512) bytes from `0x3D000 + mode * 0x200` (or its external SPI cache) into SRAM `0x0008A000` (footer at `+0x1A8` → `0x0008A1A8..0x0008A1DF`).
 
-### Stock Mode Summary Table (`RZ09-0328`, `EC v01.00`, Verified Against ROM + Live `nvidia-smi`)
+### Stock firmware Summary Table (`RZ09-0328`, `EC v01.00`, Verified Against ROM + Live `nvidia-smi`)
 
 | Mode | Name | AC CPU `PL1 / PL2` | Thermal Fallback `PL1/PL2` | Battery CPU `PL1 / PL2` | Live GPU Cap (`nvidia-smi` + ACPI) | GPU Target (`NDTT` `+0x32`) | Auto Fan Range | Manual RPM Clamp (`+0x21..+0x26`, Def `+0x23`) |
 | :---: | :--- | :---: | :---: | :---: | :--- | :---: | :--- | :--- |
@@ -68,6 +69,31 @@ When `[0x8035F]` (`Mode`, `0..7`) changes, `0x120ca(mode)` loads `0x200` (512) b
 | **`4`** | **Custom** *(via `0x0D07`)* | **`25/45`, `35/45`, or `55/80 W`** *(see below)* | `35 W` if CPU therm; `40 W` Med if GPU therm | `20`, `25`, or `30 W` | **`80 W`** (`_QD1`, `CTGP=0` on all GPU sliders) | `75 °C` (Low) / `87 °C` (Med/High) | `0` or `2700–5500` (st `0..9`) | `4900–5500` (def `5200`) |
 | **`5`** | **Silent** | `35 W / 45 W` | `35 W / 80 W` | `30 W / 30 W` | **`30 W`** (Footer `+0x0B = 0x05` → **`_QD5`**) | `97 °C` *(v01.00)* | `0` or `2200–3250` (st `0..7`) | **`2400–5000`** (def `3100`) |
 | **`6, 7`** | **Silent Clones** | Identical to `5` | Identical to `5` | Identical to `5` | **`30 W`** (`_QD5`) | `97 °C` | `0` or `2200–3250` (st `0..7`) | `2400–5000` (def `3100`) |
+
+| Mode | Name | Auto RPM range | Auto steps | Manual RPM min | Manual RPM max | Manual default |
+| :---: | :--- | :--- | :---: | :---: | :---: | :---: |
+| 0 | Balanced | 0 (stop) or 2500–5300 | 0–9 | 4300 | 5500 | 4900 |
+| 1 | Gaming | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+| 2 | Creator / Perf | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+| 3 | Legacy | 0 (stop) or 2700–5500 | 0–9 | 4900 (requests below this give 0 RPM, a firmware quirk) | 5500 | – |
+| 4 | Custom | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+| 5 | Silent | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
+| 6, 7 | Silent clones | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
+
+Auto-mode RPM per step, as you can see it uses step based fan control instead of continuous algorithm based control
+| Step | Balanced (0) | Gaming / Creator / Legacy / Custom (1–4) | Silent (5–7) |
+| :---: | :---: | :---: | :---: |
+| 0 | 0 | 0 | 0 |
+| 1 | 2500 | 2700 | 2200 |
+| 2 | 2800 | 3000 | 2400 |
+| 3 | 3100 | 3300 | 2500 |
+| 4 | 3400 | 3600 | 2700 |
+| 5 | 3700 | 3900 | 2900 |
+| 6 | 4100 | 4300 | 3100 |
+| 7 | 4500 | 4700 | 3250 |
+| 8 | 4900 | 5100 | – |
+| 9 | 5300 | 5500 | – |
+
 
 ### Stock Custom Mode (`4`) Sub-Levels (`0x0D07` / `0x0D87`, SRAM `0x808E0` & `0x808E1`)
 - **CPU Slider (`0x0D07` zone `1`, SRAM `[0x808E0]` → LUT `0x00086900`, built in code at `0x10070..0x101c8`)**:
