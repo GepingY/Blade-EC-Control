@@ -45,11 +45,13 @@ With my offline patching script, you can unlock **full `0–5500 RPM` manual con
 > No copyrighted Razer firmware or flasher binaries are hosted here — you dump your own backup and patch it locally.
 
 
-### 1. How to extract/dump the EC firmware binary of a Razer Blade
-   - Install [Python 3.10+](https://www.python.org/downloads/) if you don't have python installed already, download the two official signed [PawnIO](https://pawnio.eu/) files listed in [ec_research/README.md](ec_research/README.md) into `tools/pawnio/`, and double-click **`ec_research/EcRomDump.cmd`**.
-   - In ~4.5 minutes it saves your laptop's exact 256 KiB stock EC backup (`ec-rom-00000-3ffff.bin`). Keep a safe copy of this file!
+### 1. How to dump the EC firmware (read-only, ~4.5 min)
+1. If you already have python installed locally proceed to step 2, if not: install [Python 3.10+](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**.
+2. Download this repository.
+3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_research/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
+4. Wait for "Press any key". Your EC is then saved as `ec-rom-00000-3ffff.bin` in the run folder. 
   
-
+### 2. How to modify the EC you extracted to what you want
 3. **Create your modded `0–5500 RPM` firmware offline**:
    ```powershell
    python ec_research/patch_ec_fan_range.py --stock path/to/ec-rom-00000-3ffff.bin --mirror-flag-ff
