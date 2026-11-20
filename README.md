@@ -57,13 +57,13 @@ With my offline patching script, you can unlock **full `0–5500 RPM` manual con
 2. Manually read through the structure of the EC and manually reprogram it
 3. Ask a AI agent to do it for you
 
-#### Method 1: Auto-Patcher
+- **Method 1**: Auto-Patcher
 
 
-#### Method 2: Manual programming
+- **Method 2**: Manual programming
 Read all the MD of this repo including FINDINGS.MD and then you will understand how to do it
 
-#### Method 3: Ask for the help of a AI Agent
+- **Method 3**: Ask for the help of a AI Agent
 Just send the URL of this repository to a AI you think is the smartest and send it the binary of the EC you extracted and ask it to parse it and give you options to mod it. Best if you do it with a Agent instead of a web AI model, for reference ChatGPT Sol 6+ MAX/ Astra 6.2 Max in codex can definitely do it, Gemini Neon/Carbon/Hydrogen/Argon in google antigravity has no problem as well.
 
 
