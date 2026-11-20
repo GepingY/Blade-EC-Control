@@ -29,6 +29,7 @@ This repo contains:
 >| 4 | Custom | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
 >| 5 | Silent | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
 >| 6, 7 | Silent clones | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
+
 ---
 
 >[!WARNING]
@@ -46,8 +47,8 @@ With my offline patching script, you can unlock **full `0–5500 RPM` manual con
 1. If you already have python installed locally proceed to step 2, if not: install [Python 3.10+](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**.
 2. Download this repository.
 3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_research/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
-4. Wait for "Press any key". Your EC is then saved as `ec-rom-00000-3ffff.bin` in the run folder. 
-  
+4. Wait for "Press any key". Your EC backup is saved inside `diagnostics/rom-dump-<timestamp>/ec-rom-00000-3ffff.bin` (the exact folder path is printed in the window).
+
 ### 2. How to modify the EC you extracted
 After extracting the EC in step 1, you might want to modify it to change settings such as fan RPM restriction or CPU TDP or GPU TDP or other stuff, for this read below:
 
@@ -63,7 +64,8 @@ After extracting the EC in step 1, you might want to modify it to change setting
 4. If the program is able to recognize your `.bin` then congrats! You can now edit your binary inside the app.
 5. After finishing your edits, Go to tab Signature Scan & Diff and check the check box `Force 0xff (SPI mirror)`.
 6. run a verification simulation to check if the new patched firmware will work in the EC by clicking "Verify & Preview (NDS32 Emulator)", if verification passes proceed to next step, if not create a issue
-7. All done! Proceed to flashing the ROM you just patched!
+7. Press "Save Patched ROM (.bin)..." to save
+8. All done! Proceed to flashing the ROM you just patched!
 
 - **Method 2**: Manual programming
 Read all the MD of this repo including FINDINGS.MD and then hopefully you will understand how to do it :)
@@ -85,7 +87,9 @@ Just send the URL of this repository to a AI you think is the smartest and send 
    - Make sure your laptop won't loss power during the process by plug in charger and make sure battery is full enough
    - Close **Razer Synapse**, **`BladeFanControl.exe`**, **HWiNFO**, **MSI Afterburner**, and any other hardware/sensor monitoring software.
    - Disable auto sleep/hibernation in windows setting in case your blades decides to sleep
+
 ---
+
 #### Option A: Flash on Windows (External Mirror SPI Boards like `RZ09-0328`, or Any `IT8390E` Blade)
 > [!IMPORTANT]
 > **Never run the unpatched `Razer_EC_Flash_v1.03.exe`.** Razer's original flasher has a bug where a verification failure still exits Follow Mode (`0xFC`) and forces a reboot. Always patch it first with `patch_razer_flasher.py`.
@@ -118,7 +122,7 @@ Just send the URL of this repository to a AI you think is the smartest and send 
      SSID=2011
      REBOOT=0
      ```
-     *(Replace `2011` with your own board's `SSID` reported by `EcSioProbe.cmd`!)*
+     *(Replace `2011` with your own board's 4-digit hex `SSID` — shown in the `EcRomDump.cmd` console output and inside `diagnostics/rom-dump-<timestamp>/probe.json` under `"ssid"`, without the `0x` prefix.)*
 3. **Allow `WinRing0x64.sys` to load temporarily:**
    - Because Razer's flasher uses `WinRing0x64.sys`, Windows 11 blocks it by default. Temporarily turn off **Memory Integrity (HVCI)** and the **Microsoft Vulnerable Driver Blocklist** in *Windows Security → Device Security → Core Isolation* and you must reboot before continue.
 4. **Run the flash:**
@@ -132,7 +136,9 @@ Just send the URL of this repository to a AI you think is the smartest and send 
    - **If it EVER prints `.......Fail` (`%ERRORLEVEL% == 2`):**
      - **DO NOT reboot or power off!**
      - Immediately run `Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe` in the same Administrator Command Prompt (or point `ToolConfig.ini` to your stock rollback `.bin` first and run `_recovery_in_follow_mode.exe`) until it prints `Update <file> file ok!`.
+
 ---
+
 #### Option B: Flash on Linux Live USB (Direct Internal eFlash Boards where `SPI ID == FF FF FE`)
 If your Blade's `IT8390E-256` flashes internal eFlash directly (`SPI ID == FF FF FE` rather than an external `GD25Q64`), you can use our pure-Python Linux flasher (`ec_research/ite_ec_flash_linux.py`), which includes a **100% read-only `--verify-only` dry run** and automatic per-sector retries without needing `WinRing0`:
 1. Temporarily disable **Secure Boot** in BIOS (Linux blocks `/dev/port` under Secure Boot lockdown) and boot a **Linux Live USB** (e.g., Ubuntu).
@@ -150,12 +156,15 @@ If your Blade's `IT8390E-256` flashes internal eFlash directly (`SPI ID == FF FF
    sudo python3 ec_research/ite_ec_flash_linux.py --flash path/to/your-patched-ec.bin --i-accept-brick-risk
    ```
 5. Wait for `FLASH & 256 KiB VERIFY SUCCEEDED 100%`, shut down completely (`sudo poweroff`), wait 10 seconds, and power back on.
+
 ---
+
 #### Post-Flash Verification & Rolling Back to Stock
 - **Verify live:** Back in Windows (with HVCI re-enabled), double-click **`ec_research/EcVerifyLive.cmd`** (or run `python ec_research/ec_sio_probe.py --verify-live`) to confirm your patched bytes, cache version, and new RPM/power limits are active in live EC RAM.
 - **Rollback to stock anytime:** Flash your stock backup `.bin` (with `0x0008D = 0xFF` on mirror boards) using the exact same steps above. On first boot, the stock firmware detects the bumped cache version and automatically rebuilds the external BIOS SPI caches back to factory defaults.
 
 ---
+
 **Enjoy!**
 
 
@@ -175,7 +184,7 @@ Your support helps more people discover this project and motivates further devel
 
 | Path | What's Inside |
 | :--- | :--- |
-| **[Releases](https://github.com/GepingY/Blade-EC-Control/releases)** | Pre-built standalone **`BladeFanControl.exe`** (no Python, no console window) |
+| **[Releases](https://github.com/GepingY/Blade-EC-Control/releases)** | Pre-built standalone **`BladeFanControl.exe`** & **`RazerECAutoPatcher.exe`** (no Python, no console window) |
 | **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)** | Step-by-step EC dump, patch, flash, live verification & stock rollback guide |
 | **[FINDINGS.md](FINDINGS.md)** | Full technical reference for tinkerers (memory maps, registers, ACPI/PECI/GPU details, hidden `0xFE`/`0xFF` direct-PWM modes) |
 | **[docs/ACPI_FAN_ANALYSIS.md](docs/ACPI_FAN_ANALYSIS.md)** | Why BIOS/ACPI/DPTF fan settings don't control the physical fans |
