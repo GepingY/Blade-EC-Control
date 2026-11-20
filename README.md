@@ -1,54 +1,89 @@
-# Razer Blade Fan, Power & EC Control (`RZ09-0328` & `IT8390E` Blades)
-
-A simple, Synapse-free Windows app to control fans, power modes, and CPU Turbo Boost on the **Razer Blade 15 Base Model (Early 2020, `RZ09-0328`)** — plus step-by-step tools to **dump, mod, and safely flash your own Embedded Controller (EC)** to unlock full **`0–5500 RPM`** manual fan control (including complete `0 RPM` fan stop in any mode).
-
-> **No programming experience required to use the app!** Download the ready-to-run `.exe` below and double-click it — no Python install, no Razer Synapse, and no console window.
-
+# Razer Blade Fan, Power & EC Control
+This repo contains:
+- A GUI app to control the fan speed / Mode for many Razer Blades
+- EC Mod tutorial to patch your own EC to unlock all fan speed manual control, Unlock Higher or lower TDP, Change GPU TDP mode
+- Documented discovery for those who is interested on how does the EC of Razer Blade work and how does Razer Synapse communicate with it and how does the EC controls the Razer Blade(For this check FINDINGS.MD)
 ---
 
-## 1. Quick Start — Use the GUI App (No Firmware Mod Needed)
+## 1. The GUI App
 
-If you own a **Razer Blade 15 Base (Early 2020, `RZ09-0328`)**, you can use the controller immediately with zero risk:
+- For **Razer Blade 15 Base (Early 2020, `RZ09-0328`)**, you can use the controller immediately with no risk:
 
-1. Go to the **[Releases page](https://github.com/GepingY/Blade-EC-Control/releases)** and download **`BladeFanControl.exe`**.
-2. Double-click **`BladeFanControl.exe`** to open the app (runs cleanly with no black console popup).
-3. From the window (or right-click the green fan icon in your Windows system tray):
-   - **Switch performance modes** with one click: **Silent** (`30 W` GPU, quietest), **Balanced** (`80 W` GPU), **Gaming** (`90 W` max GPU), **Creator**, and **Custom** (**Low / Medium / High** CPU power).
-   - **Control fan speed**: Switch between **Auto** (built-in temperature curve) and **Manual** RPM slider.
-   - **Toggle Windows CPU Turbo Boost ON/OFF** independently — great for keeping temperatures and fan noise low while staying in Silent or Custom mode.
-   - **Live telemetry**: View EC temperatures plus live NVIDIA GPU temperature, power draw, and active power cap.
-   - **Minimize to System Tray**: Clicking minimize (`_`) hides the app to the tray and pauses GPU polling so your dGPU can sleep cleanly.
+  Go to the **[Releases page](https://github.com/GepingY/Blade-EC-Control/releases)** and download **`BladeFanControl.exe`**, then you can use that app to control the fan with limited range of rpm.
 
-> **Using a different Razer Blade model?** Most 2018–2023 Razer Blades share the same USB HID fan/mode protocol and only differ by their USB Product ID (`PID`). You can test the app on another Blade by running `BladeFanControl.exe --pid 0xXXXX` from a shortcut or terminal (note that the displayed Watt/RPM labels are for `RZ09-0328`).
+- For other Razer Blades:
 
+  Given that most razer blades share the same method of fan/mode control(The same method used by Synapse), the app should also work on other razer blades, do the same procedure as given above for `RZ09-0328` and it normally would work. There is chance that it won't work because I haven't tested on other blades yet, but it won't do any damage if doesn't work.
+
+> A not modded Razer Blade will have limitation to how much can you adjust it's fan RPM, every mode other than factory test mode will have a specific range of RPM allowed for manual rpm control. Different razer blade will have different limits with un-modded EC, for example `Rz09-0328` have different limit compared to `Rz09-0330`.
+>
+> The limit of `Rz09-0328` is given as below:
+>
+> | Mode | Name | Auto RPM range | Auto steps | Manual RPM min | Manual RPM max | Manual default |
+>| :---: | :--- | :--- | :---: | :---: | :---: | :---: |
+>| 0 | Balanced | 0 (stop) or 2500–5300 | 0–9 | 4300 | 5500 | 4900 |
+>| 1 | Gaming | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+>| 2 | Creator / Perf | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+>| 3 | Legacy | 0 (stop) or 2700–5500 | 0–9 | 4900 (requests below this give 0 RPM, a firmware quirk) | 5500 | – |
+>| 4 | Custom | 0 (stop) or 2700–5500 | 0–9 | 4900 | 5500 | 5200 |
+>| 5 | Silent | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
+>| 6, 7 | Silent clones | 0 (stop) or 2200–3250 | 0–7 | 2400 | 5000 | 3100 |
 ---
 
-## 2. Unlock `0–5500 RPM` Manual Fan Control on `RZ09-0328` (Optional EC Mod)
+>[!WARNING]
+>Due to the electronic physical limit of a laptop fan, it can't operate reliably at low RPM, for my razer blade it would appear that the fan might come to stop unexpectedly or not starting at all for RPM of range `1-1000`, though there is probably no harm of setting such RPM other than it might not always run. RPM of `1500` and above seems to be able to keep the fan running reliably. If you want the fan to keep running but as silent as possible, a good range I would recommend is `1500-2200` RPM.
 
-On stock `RZ09-0328` firmware, manual fan control is heavily restricted — you cannot go below **4300 RPM** in Balanced mode, **4900 RPM** in Gaming/Creator/Custom, or **2400 RPM** in Silent mode. Even if Synapse lets you drag the slider lower, the EC silently ignores it.
+## 2. EC MOD
 
-With our offline patching script, you can unlock **full `0–5500 RPM` manual control across every mode** (so you can set **`0 RPM`** for complete silence, or **`2000–3500 RPM`** for quiet gaming/cooling — even in Gaming `90 W` or Custom High mode).
+**On stock firmware, manual fan control is heavily restricted which has been show above. The way to remove the limit is to reprogram/patch the EC ourself by rewriting the firmware partially**
+
+There isn't a limit to how much you can change the EC, as far as I am concerned, you can reprogram the EC to send morse code if you want, but that is pointless, normally you would rewrite the EC to change the fan limit or TDP limit.
+With my offline patching script, you can unlock **full `0–5500 RPM` manual control across every mode**
 
 > [!CAUTION]
-> **Read before flashing:** Flashing EC firmware always carries hardware risk if power is lost or the wrong file is flashed. **Never flash a ROM from a different laptop model**, keep your original AC adapter plugged in with battery > 50%, and follow the full step-by-step checklist in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
+> **Read before flashing:** Flashing EC firmware always carries hardware risk if power is lost or the wrong file is flashed. **Never flash a ROM from a different laptop model**, follow the full step-by-step checklist in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
 > No copyrighted Razer firmware or flasher binaries are hosted here — you dump your own backup and patch it locally.
 
-### Overview of the 4 Steps (Full Instructions in [docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md))
-1. **Back up your own stock EC firmware (100% read-only, works on Windows 11 without disabling security settings)**:
-   - Install [Python 3.10+](https://www.python.org/downloads/), download the two official signed [PawnIO](https://pawnio.eu/) files listed in [ec_research/README.md](ec_research/README.md) into `tools/pawnio/`, and double-click **`ec_research/EcRomDump.cmd`**.
+
+### 1. How to extract/dump the EC firmware binary of a Razer Blade
+   - Install [Python 3.10+](https://www.python.org/downloads/) if you don't have python installed already, download the two official signed [PawnIO](https://pawnio.eu/) files listed in [ec_research/README.md](ec_research/README.md) into `tools/pawnio/`, and double-click **`ec_research/EcRomDump.cmd`**.
    - In ~4.5 minutes it saves your laptop's exact 256 KiB stock EC backup (`ec-rom-00000-3ffff.bin`). Keep a safe copy of this file!
-2. **Create your modded `0–5500 RPM` firmware offline**:
+  
+
+3. **Create your modded `0–5500 RPM` firmware offline**:
    ```powershell
    python ec_research/patch_ec_fan_range.py --stock path/to/ec-rom-00000-3ffff.bin --mirror-flag-ff
    ```
    *(Want custom CPU/GPU power limits too — like 25/35W Silent and 90W GPU in Custom Mode? See `ec_research/patch_ec_v2_power_fan.py`.)*
-3. **Safely flash your modded firmware**:
+4. **Safely flash your modded firmware**:
    - Patch your copy of Razer's official `Razer_EC_Flash_v1.03.exe` with `python ec_research/patch_razer_flasher.py --in-exe Razer_EC_Flash_v1.03.exe` (fixes a serious bug in Razer's original flasher so it never reboots into a failed flash), or use `ec_research/ite_ec_flash_linux.py` on Linux for direct-eFlash boards.
    - Follow the exact flashing and rollback instructions in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
-4. **Verify & enjoy**:
+5. **Verify & enjoy**:
    - Double-click **`ec_research/EcVerifyLive.cmd`** to confirm the mod is active, then open **`BladeFanControl.exe`** — drag the manual slider down to **`0 RPM`** to stop both fans completely, or pick any steady speed from **`~2000` to `5500 RPM`**!
 
 ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## 3. What We Discovered (And How This Helps Other Razer Blade Owners)
 
