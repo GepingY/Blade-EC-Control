@@ -58,10 +58,13 @@ With my offline patching script, you can unlock **full `0–5500 RPM` manual con
 3. Ask a AI agent to do it for you
 
 - **Method 1**: Auto-Patcher
-
+1. Download RazerECAutoPatcher.exe
+2. Double click it to run it and in the user interface load the `ec-rom-00000-3ffff.bin` you extracted earlier
+3. 2 thing might happen after you load the binary, either your bin matches the signature and the program is able to recognize the bytes of your binary, then you can proceed to the next step. If the program fails to recognize the signature pattern of your binary then you will have to try Method 2 or 3, RazerECAutoPatcher.exe can't help you.
+4. If the program is able to recognize your `.bin` then congrats! You can now edit your binary inside the app, after finish click save 
 
 - **Method 2**: Manual programming
-Read all the MD of this repo including FINDINGS.MD and then you will understand how to do it
+Read all the MD of this repo including FINDINGS.MD and then hopefully you will understand how to do it :)
 
 - **Method 3**: Ask for the help of a AI Agent
 Just send the URL of this repository to a AI you think is the smartest and send it the binary of the EC you extracted and ask it to parse it and give you options to mod it. Best if you do it with a Agent instead of a web AI model, for reference ChatGPT Sol 6+ MAX/ Astra 6.2 Max in codex can definitely do it, Gemini Neon/Carbon/Hydrogen/Argon in google antigravity has no problem as well.
@@ -102,7 +105,16 @@ Even if you own a **different Razer Blade model**, most Intel-era Blades using a
 
 ---
 
-## 4. Deep-Dive Guides & Project Layout
+## ⭐ Support This Project
+
+If you find this repository useful, please consider giving it a **star ⭐**!
+
+Your support helps more people discover this project and motivates further development and improvements.
+
+**Thank you for your support!**
+
+
+## Deep-Dive Guides & Project Layout
 
 | Path | What's Inside |
 | :--- | :--- |
