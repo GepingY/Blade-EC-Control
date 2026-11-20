@@ -4,7 +4,7 @@ This repo contains:
 - EC Mod tutorial to patch your own EC to unlock all fan speed manual control, Unlock Higher or lower TDP, Change GPU TDP mode
 - Documented discovery for those who is interested on how does the EC of Razer Blade work and how does Razer Synapse communicate with it and how does the EC controls the Razer Blade(For this check [FINDINGS.MD](https://github.com/GepingY/Blade-EC-Control/blob/main/FINDINGS.md))
 
- The process and mechanism is very complicated, it's advised that you directly ask your trusted AI how to use
+ The process and mechanism is very complicated(it took me a day to just write the MarkDown files), it's advised that you directly ask your trusted AI how to use
 
 ## 1. The GUI App
 
@@ -61,8 +61,9 @@ After extracting the EC in step 1, you might want to modify it to change setting
 2. Double click it to run it and in the user interface load the `ec-rom-00000-3ffff.bin` you extracted earlier
 3. 2 thing might happen after you load the binary, either your bin matches the signature and the program is able to recognize the bytes of your binary, then you can proceed to the next step. If the program fails to recognize the signature pattern of your binary then you will have to try Method 2 or 3, RazerECAutoPatcher.exe can't help you.
 4. If the program is able to recognize your `.bin` then congrats! You can now edit your binary inside the app.
-5. After finishing your edits, run a verification simulation to check if the new patched firmware will work in the EC by clicking "Verify & Preview (NDS32 Emulator)", if verification passes, then click "Save Patched ROM(.bin)"
-6. All done! Proceed to flashing the ROM you just patched!
+5. After finishing your edits, Go to tab Signature Scan & Diff and check the check box `Force 0xff (SPI mirror)`.
+6. run a verification simulation to check if the new patched firmware will work in the EC by clicking "Verify & Preview (NDS32 Emulator)", if verification passes proceed to next step, if not create a issue
+7. All done! Proceed to flashing the ROM you just patched!
 
 - **Method 2**: Manual programming
 Read all the MD of this repo including FINDINGS.MD and then hopefully you will understand how to do it :)
@@ -92,7 +93,7 @@ Just send the URL of this repository to a AI you think is the smartest and send 
 > **Never run the unpatched `Razer_EC_Flash_v1.03.exe`.** Razer's original flasher has a bug where a verification failure still exits Follow Mode (`0xFC`) and forces a reboot. Always patch it first with `patch_razer_flasher.py`.
 1. **Get & patch Razer's official EC flasher:**
    - Extract `Razer_EC_Flash_v1.03.exe` and its accompanying `WinRing0x64.sys` / `WinRing0x64.dll` files from an official Razer EC updater package into a working folder.
-   - Run our safety patcher on it:
+   - Run my safety patcher on it:
      ```powershell
      python ec_research/patch_razer_flasher.py --in-exe path/to/Razer_EC_Flash_v1.03.exe
      ```
