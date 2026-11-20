@@ -181,6 +181,8 @@ Even if you own a **different Razer Blade model**, most Intel-era Blades using a
 
 If you find this repository useful, please consider giving it a **star ⭐**!
 
+If you successfully extracted or flashed the EC on your razer blade please create a issue or send me a email with your razer blade model so I can add it to supported device list
+
 Your support helps more people discover this project and motivates further development and improvements.
 
 **Thank you for your support!**
