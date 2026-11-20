@@ -15,7 +15,7 @@ This repo contains:
 
   Given that most razer blades share the same method of fan/mode control(The same method used by Synapse), the app should also work on other razer blades, do the same procedure as given above for `RZ09-0328` and it normally would work. There is chance that it won't work because I haven't tested on other blades yet, but it won't do any damage if doesn't work.
 
-> A not modded Razer Blade will have limitation to how much can you adjust it's fan RPM, every mode other than factory test mode will have a specific range of RPM allowed for manual rpm control. Different razer blade will have different limits with un-modded EC, for example `Rz09-0328` have different limit compared to `Rz09-0330`.
+> A not modded Razer Blade will have limitation to how much can you adjust it's fan RPM, every mode other than factory test mode will have a specific range of RPM allowed for manual rpm control. Different razer blade will have different limits with un-modded EC, for example `Rz09-0328` have different limit compared to `Rz09-0330`. According to EC firmware codes/instructions EC will return successful when you set RPM manually outside the RPM range and it will set the RPM to the closest available RPM, for example assuming the `Manual RPM min` is 2000, and you set 1500, EC will return success but set RPM to 2000 instead of 1500
 >
 > The limit of `Rz09-0328` is given as below:
 >
