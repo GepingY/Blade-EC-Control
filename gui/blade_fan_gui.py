@@ -34,9 +34,11 @@ import os
 from pathlib import Path
 import queue
 import re
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -44,7 +46,15 @@ from tkinter import filedialog, ttk
 from typing import Callable
 import zlib
 
-from blade_inspect import MIN_REPORT, TRANSACTION, NativeHid, checksum, describe_reply
+from blade_inspect import (
+    KNOWN_BLADE_PIDS,
+    MIN_REPORT,
+    TRANSACTION,
+    NativeHid,
+    checksum,
+    describe_reply,
+    parse_pid_from_path,
+)
 
 POLL_INTERVAL_MS = 1500
 TRAY_POLL_INTERVAL_MS = 5000
@@ -71,6 +81,16 @@ DEFAULT_HIGH_PERF_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 DEFAULT_QUIET_PLAN_GUID = ""
 
 _NDS32_R45MAP = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 28, 29)
+
+
+def get_app_root() -> Path:
+    """Return the repository root (or executable directory when frozen with PyInstaller)."""
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        if not (exe_dir / "ec_research").is_dir() and (exe_dir.parent / "ec_research").is_dir():
+            return exe_dir.parent
+        return exe_dir
+    return Path(__file__).resolve().parent.parent
 
 
 @dataclass(frozen=True)
@@ -994,6 +1014,8 @@ def query_nvidia_telemetry_parsed() -> NvidiaTelemetry | None:
                 "--query-gpu=temperature.gpu,power.draw,enforced.power.limit,power.max_limit,pstate",
                 "--format=csv,noheader,nounits",
             ],
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             text=True,
             timeout=2.5,
             creationflags=flags,
@@ -1034,6 +1056,7 @@ def _run_powercfg(args: list[str]) -> str:
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     raw = subprocess.check_output(
         ["powercfg", *args],
+        stdin=subprocess.DEVNULL,
         stderr=subprocess.STDOUT,
         timeout=3.0,
         creationflags=flags,
@@ -1043,7 +1066,7 @@ def _run_powercfg(args: list[str]) -> str:
 
 def load_saved_preset_guids() -> tuple[str, str]:
     """Return (boost_on_plan_guid, boost_off_plan_guid) from diagnostics/presets/state.json or defaults."""
-    state_path = Path(__file__).resolve().parent.parent / "diagnostics" / "presets" / "state.json"
+    state_path = get_app_root() / "diagnostics" / "presets" / "state.json"
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
         orig = str(data.get("OriginalGuid", "")).lower()
@@ -1655,44 +1678,213 @@ class WindowsTrayIcon:
             self._ready.set()
 
 
-class BladeHidClient:
-    """Serialized HID feature-report client for Razer Blade USB HID (default 1532:0255)."""
+_PERIPHERAL_KEYWORDS = (
+    "mouse", "deathadder", "viper", "basilisk", "naga", "orochi", "cobra", "mamba",
+    "headset", "kraken", "blackshark", "barracuda", "kaira", "hammerhead", "opus",
+    "seiren", "kiyo", "nommo", "leviathan", "soundbar",
+    "firefly", "goliathus", "strider", "dock", "hub", "charging",
+    "wolverine", "kishi", "tartarus", "orbweaver", "raiju",
+    "huntsman", "blackwidow", "ornata", "cynosa", "pro type", "deathstalker",
+)
 
-    def __init__(self, pid: int = 0x0255):
-        self.pid = int(pid)
-        self._native = NativeHid()
+
+def get_user_config_path() -> Path:
+    """Return persistent user config path for remembering the detected Razer Blade PID."""
+    if sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "BladeFanControl"
+    else:
+        base = Path.home() / ".config" / "BladeFanControl"
+    return base / "config.json"
+
+
+def load_saved_pid(config_path: Path | None = None) -> tuple[int | None, str]:
+    """Load previously detected (pid, product_name) from persistent config, or (None, '')."""
+    path = config_path or get_user_config_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        raw_pid = data.get("pid")
+        pid = int(raw_pid, 0) if isinstance(raw_pid, str) else int(raw_pid)
+        if 0 < pid <= 0xFFFF:
+            return pid, str(data.get("product_name", "") or "").strip()
+    except Exception:
+        pass
+    return None, ""
+
+
+def save_detected_pid(pid: int, product_name: str = "", config_path: Path | None = None) -> Path | None:
+    """Persist a verified Razer Blade USB PID so future launches connect to it immediately."""
+    path = config_path or get_user_config_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "pid": f"0x{int(pid):04X}",
+            "product_name": product_name.strip(),
+            "updated_at": datetime.now().astimezone().isoformat(),
+        }
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(path)
+        return path
+    except Exception:
+        return None
+
+
+def is_peripheral_product_name(name: str) -> bool:
+    low = (name or "").lower()
+    if "blade" in low or "razer book" in low:
+        return False
+    return any(kw in low for kw in _PERIPHERAL_KEYWORDS)
+
+
+def rank_hid_candidates(
+    paths: list[str],
+    *,
+    explicit_pid: int | None = None,
+    saved_pid: int | None = None,
+    known_pids: tuple[int, ...] = KNOWN_BLADE_PIDS,
+    product_names: dict[str, str] | None = None,
+) -> list[tuple[str, int | None, str]]:
+    """Order VID 0x1532 HID paths safely: saved PID -> known Blade PIDs -> 'blade' name -> non-peripheral fallback."""
+    prod_map = product_names or {}
+    known_rank = {p: idx for idx, p in enumerate(known_pids)}
+    ranked: list[tuple[tuple[int, int, int], str, int | None, str]] = []
+    for order_idx, candidate in enumerate(paths):
+        if not candidate or "vid_1532" not in candidate.lower():
+            continue
+        parsed_pid = parse_pid_from_path(candidate)
+        if explicit_pid is not None:
+            if parsed_pid != explicit_pid:
+                continue
+            ranked.append(((0, 0, order_idx), candidate, parsed_pid, "cli"))
+            continue
+        prod = prod_map.get(candidate, "")
+        prod_low = prod.lower()
+        if saved_pid is not None and parsed_pid == saved_pid:
+            ranked.append(((0, 0, order_idx), candidate, parsed_pid, "saved"))
+        elif parsed_pid in known_rank:
+            ranked.append(((1, known_rank[parsed_pid], order_idx), candidate, parsed_pid, "auto-detected"))
+        elif "blade" in prod_low or "razer book" in prod_low:
+            ranked.append(((2, 0, order_idx), candidate, parsed_pid, "auto-detected"))
+        elif not is_peripheral_product_name(prod):
+            ranked.append(((3, 0, order_idx), candidate, parsed_pid, "auto-detected"))
+    ranked.sort(key=lambda item: item[0])
+    return [(path, pid, src) for _, path, pid, src in ranked]
+
+
+class BladeHidClient:
+    """Serialized HID feature-report client with automatic Razer Blade PID detection & persistence."""
+
+    def __init__(
+        self,
+        pid: int | None = None,
+        config_path: Path | None = None,
+        rescan_pid: bool = False,
+        native_hid=None,
+    ):
+        self.explicit_pid: int | None = int(pid) if pid is not None else None
+        self._config_path = config_path
+        self._rescan_pid = bool(rescan_pid)
+        saved_pid, saved_name = (None, "") if (self.explicit_pid is not None or self._rescan_pid) else load_saved_pid(config_path)
+        self.saved_pid: int | None = saved_pid
+        self.pid: int | None = self.explicit_pid if self.explicit_pid is not None else saved_pid
+        self.product_name: str = saved_name if self.explicit_pid is None else ""
+        self.pid_source: str = ""
+        self.saved_config_updated: bool = False
+        self._native = native_hid if native_hid is not None else NativeHid()
         self._lock = threading.Lock()
         self._handle = None
         self._length = 0
         self.endpoint = ""
 
+    def _probe_ec_fan_interface_unlocked(self, handle, length: int) -> bool:
+        """Strictly read-only probe (0x0D82 Get Fan Mode Zone 1) that only Razer Blade ECs answer validly."""
+        saved_handle, saved_len = self._handle, self._length
+        self._handle, self._length = handle, length
+        try:
+            reply = self._exchange_unlocked(0x0D82, (0, 1, 0, 0), retries=2)
+            return bool(reply.get("valid"))
+        except Exception:
+            return False
+        finally:
+            self._handle, self._length = saved_handle, saved_len
+
     def connect(self) -> str:
         with self._lock:
             self._close_unlocked()
+            self.saved_config_updated = False
             last_error: Exception | None = None
-            pid_tag = f"pid_{self.pid:04x}"
-            for candidate in self._native.paths(pid=self.pid):
-                if not candidate or "vid_1532" not in candidate.lower() or pid_tag not in candidate.lower():
-                    continue
+            saved_pid, _ = (None, "") if (self.explicit_pid is not None or self._rescan_pid) else load_saved_pid(self._config_path)
+            self.saved_pid = saved_pid
+
+            raw_paths = self._native.paths(pid=self.explicit_pid)
+            if not raw_paths:
+                if self.explicit_pid is not None:
+                    raise RuntimeError(f"No Razer Blade 1532:{self.explicit_pid:04X} HID interface found")
+                raise RuntimeError("No Razer HID devices (VID 1532) found on this machine")
+
+            # Inspect product strings for non-known VID 1532 devices without sending any HID commands
+            product_names: dict[str, str] = {}
+            known_set = set(KNOWN_BLADE_PIDS)
+            for p in raw_paths:
+                parsed = parse_pid_from_path(p)
+                if self.explicit_pid is None and parsed != saved_pid and parsed not in known_set:
+                    h = None
+                    try:
+                        h = self._native.open(p)
+                        product_names[p] = self._native.product_string(h)
+                    except OSError:
+                        product_names[p] = ""
+                    finally:
+                        if h is not None:
+                            self._native.kernel.CloseHandle(h)
+
+            candidates = rank_hid_candidates(
+                raw_paths,
+                explicit_pid=self.explicit_pid,
+                saved_pid=saved_pid,
+                known_pids=KNOWN_BLADE_PIDS,
+                product_names=product_names,
+            )
+
+            for candidate, parsed_pid, src in candidates:
                 handle = None
                 try:
                     handle = self._native.open(candidate)
                     caps = self._native.caps(handle)
                     if caps["FeatureReportByteLength"] < MIN_REPORT:
                         continue
+                    prod = product_names.get(candidate)
+                    if prod is None:
+                        prod = self._native.product_string(handle)
+                    if not self._probe_ec_fan_interface_unlocked(handle, caps["FeatureReportByteLength"]):
+                        continue
                     self._handle = handle
                     self._length = caps["FeatureReportByteLength"]
                     self.endpoint = candidate
+                    self.pid = parsed_pid if parsed_pid is not None else self.explicit_pid
+                    self.product_name = prod
+                    self.pid_source = src
                     handle = None
+                    if self.pid is not None and (self.pid != saved_pid or self._rescan_pid):
+                        saved_path = save_detected_pid(self.pid, self.product_name, config_path=self._config_path)
+                        self.saved_config_updated = saved_path is not None
                     return candidate
                 except OSError as exc:
                     last_error = exc
                 finally:
                     if handle is not None:
                         self._native.kernel.CloseHandle(handle)
+
             if last_error is not None:
                 raise last_error
-            raise RuntimeError(f"No Razer Blade 1532:{self.pid:04X} HID interface with >=91-byte feature report found")
+            if self.explicit_pid is not None:
+                raise RuntimeError(
+                    f"No Razer Blade 1532:{self.explicit_pid:04X} EC fan interface responded to read-only probe (0x0D82)"
+                )
+            seen_pids = sorted({f"0x{p:04X}" for p in (parse_pid_from_path(x) for x in raw_paths) if p is not None})
+            raise RuntimeError(
+                f"No supported Razer Blade EC fan controller responded (checked VID 1532 PIDs: {', '.join(seen_pids) or 'none'})"
+            )
 
     def close(self) -> None:
         with self._lock:
@@ -1737,26 +1929,44 @@ class BladeHidClient:
         with self._lock:
             if self._handle is None:
                 raise RuntimeError("HID device not connected")
-            fw = self._exchange_unlocked(0x0081, (0, 0))
-            fw_args = fw["args"]
-            fw_str = f"{fw_args[0]:02d}.{fw_args[1]:02d}" if len(fw_args) >= 2 else str(fw_args)
+            try:
+                fw = self._exchange_unlocked(0x0081, (0, 0))
+                fw_args = fw["args"]
+                fw_str = f"{fw_args[0]:02d}.{fw_args[1]:02d}" if len(fw_args) >= 2 else str(fw_args)
+            except RuntimeError:
+                fw_str = "unknown"
             zones = []
             for zone in (1, 2):
-                m = self._exchange_unlocked(0x0D82, (0, zone, 0, 0))["all_argument_bytes"]
-                r = self._exchange_unlocked(0x0D81, (0, zone, 0))["all_argument_bytes"]
-                zones.append(ZoneSnapshot(zone=zone, mode=m[2], fan_flag=m[3], stored_rpm=r[2] * 100))
-            temps = self._exchange_unlocked(0x0D85, (0, 0, 0))["all_argument_bytes"]
-            b_cpu = self._exchange_unlocked(0x0D87, (0, 1, 0))["all_argument_bytes"][2]
-            b_gpu = self._exchange_unlocked(0x0D87, (0, 2, 0))["all_argument_bytes"][2]
-            max_fan = self._exchange_unlocked(0x078F, (0,))["all_argument_bytes"][0]
+                try:
+                    m = self._exchange_unlocked(0x0D82, (0, zone, 0, 0))["all_argument_bytes"]
+                    r = self._exchange_unlocked(0x0D81, (0, zone, 0))["all_argument_bytes"]
+                    zones.append(ZoneSnapshot(zone=zone, mode=m[2], fan_flag=m[3], stored_rpm=r[2] * 100))
+                except RuntimeError:
+                    if zone == 1:
+                        raise
+                    zones.append(ZoneSnapshot(zone=2, mode=zones[0].mode, fan_flag=zones[0].fan_flag, stored_rpm=zones[0].stored_rpm))
+            try:
+                temps = self._exchange_unlocked(0x0D85, (0, 0, 0))["all_argument_bytes"]
+                cpu_ec_c, gpu_ec_c = temps[1], temps[2]
+            except RuntimeError:
+                cpu_ec_c, gpu_ec_c = 0, 0
+            try:
+                b_cpu = self._exchange_unlocked(0x0D87, (0, 1, 0))["all_argument_bytes"][2]
+                b_gpu = self._exchange_unlocked(0x0D87, (0, 2, 0))["all_argument_bytes"][2]
+            except RuntimeError:
+                b_cpu, b_gpu = 1, 1
+            try:
+                max_fan = self._exchange_unlocked(0x078F, (0,))["all_argument_bytes"][0]
+            except RuntimeError:
+                max_fan = 0
         nv = query_nvidia_telemetry_parsed() if include_gpu else None
         gpu_telem = nv.display if nv is not None else ("nvidia-smi unavailable" if include_gpu else "")
         return BladeSnapshot(
             endpoint=self.endpoint,
             fw_version=fw_str,
             zones=(zones[0], zones[1]),
-            cpu_ec_c=temps[1],
-            gpu_ec_c=temps[2],
+            cpu_ec_c=cpu_ec_c,
+            gpu_ec_c=gpu_ec_c,
             cpu_boost=b_cpu,
             gpu_boost=b_gpu,
             max_fan_flag=max_fan,
@@ -1847,7 +2057,13 @@ def run_live_ec_probe(repo_root: Path) -> Path:
         raise RuntimeError("Live EC silicon probe requires Windows")
     probe_script = repo_root / "ec_research" / "ec_sio_probe.py"
     if not probe_script.is_file():
-        raise FileNotFoundError(f"Probe script not found: {probe_script}")
+        raise FileNotFoundError(
+            "Live EC probe requires ec_research/ec_sio_probe.py from the repository next to the app "
+            "(or click 'Load ROM / Probe' to open an existing .bin or probe.json)."
+        )
+    py_exe = (shutil.which("python") or shutil.which("python3")) if getattr(sys, "frozen", False) else sys.executable
+    if not py_exe:
+        raise RuntimeError("Python 3 is required on PATH to run ec_research/ec_sio_probe.py from the standalone .exe.")
     diag_dir = repo_root / "diagnostics"
     before = {p: p.stat().st_mtime for p in diag_dir.glob("verify-live-*/probe.json")} if diag_dir.is_dir() else {}
 
@@ -1855,8 +2071,9 @@ def run_live_ec_probe(repo_root: Path) -> Path:
     is_admin = bool(ctypes.WinDLL("shell32").IsUserAnAdmin())
     if is_admin:
         proc = subprocess.run(
-            [sys.executable, str(probe_script), "--verify-live"],
+            [py_exe, str(probe_script), "--verify-live"],
             cwd=str(repo_root),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=90,
@@ -1866,7 +2083,7 @@ def run_live_ec_probe(repo_root: Path) -> Path:
             detail = (proc.stderr or proc.stdout or "").strip()
             raise RuntimeError(f"ec_sio_probe.py --verify-live exited {proc.returncode}: {detail[:300]}")
     else:
-        py_esc = sys.executable.replace("'", "''")
+        py_esc = py_exe.replace("'", "''")
         wd_esc = str(repo_root).replace("'", "''")
         ps_cmd = (
             f"$p = Start-Process -FilePath '{py_esc}' "
@@ -1877,6 +2094,7 @@ def run_live_ec_probe(repo_root: Path) -> Path:
         proc = subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps_cmd],
             cwd=str(repo_root),
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=120,
@@ -1902,14 +2120,23 @@ def run_live_ec_probe(repo_root: Path) -> Path:
 class FanTesterApp:
     """Tkinter desktop UI for RZ09-0328 EC mode control and reference tables."""
 
-    def __init__(self, root: tk.Tk, auto_connect: bool = True, ec_profile: EcProfile | None = None, pid: int = 0x0255):
+    def __init__(
+        self,
+        root: tk.Tk,
+        auto_connect: bool = True,
+        ec_profile: EcProfile | None = None,
+        pid: int | None = None,
+        rescan_pid: bool = False,
+    ):
         self.root = root
-        self.pid = int(pid)
-        self.root.title(f"Razer Blade RZ09-0328 (HID 1532:{self.pid:04X}) — Mode, Power & Fan Controller")
+        self.client = BladeHidClient(pid=pid, rescan_pid=rescan_pid)
+        self.pid: int | None = self.client.pid
+        self.product_name: str = self.client.product_name
+        self._update_window_title()
         self.root.geometry("1040x920")
         self.root.minsize(920, 800)
 
-        self._repo_root = Path(__file__).resolve().parent.parent
+        self._repo_root = get_app_root()
         self.ec_profile: EcProfile = (
             ec_profile if ec_profile is not None else autodetect_startup_profile(self._repo_root)
         )
@@ -1922,7 +2149,6 @@ class FanTesterApp:
         except tk.TclError:
             self._window_icon = None
 
-        self.client = BladeHidClient(pid=self.pid)
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="BladeHid")
         self.ui_queue: queue.Queue = queue.Queue()
         self.startup_snapshot: BladeSnapshot | None = None
@@ -1946,7 +2172,11 @@ class FanTesterApp:
             else None
         )
 
-        log_dir = self._repo_root / "diagnostics" / "hid"
+        if getattr(sys, "frozen", False) and not (self._repo_root / "diagnostics").is_dir():
+            local_app = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "BladeFanControl" / "logs"
+            log_dir = local_app
+        else:
+            log_dir = self._repo_root / "diagnostics" / "hid"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.action_log_path = log_dir / f"gui-actions-{datetime.now():%Y%m%d-%H%M%S}.jsonl"
 
@@ -1973,6 +2203,15 @@ class FanTesterApp:
         else:
             self.conn_var.set("Offline / UI Preview Mode (auto_connect=False)")
 
+    def _update_window_title(self) -> None:
+        if self.pid is None:
+            self.root.title("Razer Blade — Mode, Power & Fan Controller")
+        elif self.pid == 0x0255:
+            self.root.title("Razer Blade RZ09-0328 (HID 1532:0255) — Mode, Power & Fan Controller")
+        else:
+            label = self.product_name or "Razer Blade"
+            self.root.title(f"{label} (HID 1532:{self.pid:04X}) — Mode, Power & Fan Controller")
+
     def _build_ui(self) -> None:
         style = ttk.Style()
         try:
@@ -1996,7 +2235,12 @@ class FanTesterApp:
         hdr = ttk.LabelFrame(parent, text="Controller Status & Live Readback (EC v01.00)", padding=8)
         hdr.pack(fill="x", pady=(0, 8))
 
-        self.conn_var = tk.StringVar(value=f"Connecting to 1532:{self.pid:04X}...")
+        init_conn = (
+            f"Connecting to 1532:{self.pid:04X}..."
+            if self.pid is not None
+            else "Auto-detecting Razer Blade HID (VID 1532)..."
+        )
+        self.conn_var = tk.StringVar(value=init_conn)
         top_row = ttk.Frame(hdr)
         top_row.pack(fill="x")
         ttk.Label(top_row, textvariable=self.conn_var, font=("Segoe UI", 9, "bold")).pack(side="left")
@@ -2602,16 +2846,31 @@ class FanTesterApp:
                 self._log(f"ERROR connecting: {err}", {"error": str(err)})
                 return
             ep, snap, pw = res
+            self.pid = self.client.pid
+            self.product_name = self.client.product_name
+            self._update_window_title()
             self.startup_snapshot = snap
             self._sync_vars_from_snapshot(snap)
             self._apply_power_status(pw)
             self._apply_snapshot_to_ui(snap)
             pw_msg = f", ac_boost={pw.ac_boost}" if pw is not None else ""
+            pid_hex = f"0x{self.pid:04X}" if self.pid is not None else "unknown"
+            pid_note = ""
+            if self.client.saved_config_updated and self.pid is not None:
+                pid_note = f" [PID {pid_hex} detected & saved for future launches]"
+            elif self.client.pid_source == "saved" and self.pid is not None:
+                pid_note = f" [using saved PID {pid_hex}]"
             self._log(
-                f"Connected to {ep} (FW {snap.fw_version}). Startup: mode={snap.zones[0].mode}, "
+                f"Connected to {ep} (PID {pid_hex}, FW {snap.fw_version}){pid_note}. Startup: mode={snap.zones[0].mode}, "
                 f"flag={snap.zones[0].fan_flag}, target={snap.zones[0].stored_rpm} RPM, "
                 f"boost=({snap.cpu_boost}, {snap.gpu_boost}){pw_msg}",
-                {"event": "connected", "fw": snap.fw_version},
+                {
+                    "event": "connected",
+                    "pid": pid_hex,
+                    "pid_source": self.client.pid_source,
+                    "product_name": self.product_name,
+                    "fw": snap.fw_version,
+                },
             )
             self._schedule_poll()
 
@@ -2702,7 +2961,10 @@ class FanTesterApp:
 
     def _apply_snapshot_to_ui(self, snap: BladeSnapshot) -> None:
         self.latest_snapshot = snap
-        self.conn_var.set(f"Connected: 1532:{self.pid:04X} (FW {snap.fw_version}) | MaxFanFlag: {snap.max_fan_flag}")
+        pid_str = f"1532:{self.pid:04X}" if self.pid is not None else "1532:????"
+        prod_tag = f" {self.product_name}" if self.product_name else ""
+        src_tag = f" [{self.client.pid_source}]" if self.client.pid_source else ""
+        self.conn_var.set(f"Connected: {pid_str}{prod_tag}{src_tag} (FW {snap.fw_version}) | MaxFanFlag: {snap.max_fan_flag}")
         for zs, var in zip(snap.zones, (self.z1_var, self.z2_var)):
             m_lbl = self.ec_profile.mode_label(zs.mode)
             f_lbl = "Manual (1)" if zs.fan_flag == 1 else f"Auto ({zs.fan_flag})"
@@ -3202,28 +3464,161 @@ def self_test(verify_ui: bool = True) -> None:
         app.executor.shutdown(wait=False)
         root.destroy()
 
+    # Verify automatic Razer Blade PID detection, peripheral filtering & persistent config round-trip
+    assert parse_pid_from_path(r"\\?\hid#vid_1532&pid_0255&mi_02#7&1234") == 0x0255
+    assert parse_pid_from_path(r"\\?\hid#vid_1532&pid_02C1&mi_02#7&1234") == 0x02C1
+    assert parse_pid_from_path(r"\\?\hid#vid_1532") is None
+    assert is_peripheral_product_name("Razer Viper V3 Pro") is True
+    assert is_peripheral_product_name("Razer Blade 16 (2025)") is False
+    assert is_peripheral_product_name("Razer Blade") is False
+
+    sample_paths = [
+        r"\\?\hid#vid_1532&pid_0084&mi_00#mouse",
+        r"\\?\hid#vid_1532&pid_02c1&mi_02#newblade",
+        r"\\?\hid#vid_1532&pid_0253&mi_02#knownblade",
+        r"\\?\hid#vid_1532&pid_029f&mi_02#savedblade",
+    ]
+    sample_names = {
+        sample_paths[0]: "Razer Viper Ultimate",
+        sample_paths[1]: "Razer Blade 16 (2025)",
+        sample_paths[2]: "Razer Blade 15 Advanced",
+        sample_paths[3]: "Razer Blade 16",
+    }
+    ranked = rank_hid_candidates(sample_paths, saved_pid=0x029F, product_names=sample_names)
+    assert [p for _, p, _ in ranked] == [0x029F, 0x0253, 0x02C1]
+    assert ranked[0][2] == "saved" and ranked[1][2] == "auto-detected"
+
+    class _MockKernel:
+        def __init__(self):
+            self.closed: list[int] = []
+
+        def CloseHandle(self, h):
+            self.closed.append(h)
+            return True
+
+    class _MockHidDll:
+        def __init__(self, responders: dict[int, bool]):
+            self._responders = responders
+            self._last_sent: dict[int, bytes] = {}
+
+        def HidD_SetFeature(self, h, buf, length):
+            self._last_sent[h] = bytes(buf.raw[:length])
+            return 1
+
+        def HidD_GetFeature(self, h, buf, length):
+            sent = self._last_sent.get(h, b"\x00" * length)
+            rep = bytearray(sent)
+            rep[1] = 2 if self._responders.get(h, False) else 5
+            if rep[1] == 2:
+                rep[9:13] = bytes([0, 1, 0, 0])
+            rep[89] = checksum(rep)
+            buf.raw = bytes(rep)
+            return 1
+
+    class _MockNativeHid:
+        def __init__(self, devices: list[tuple[str, str, int, bool]]):
+            # Each entry: (path, product_name, feature_len, responds_to_0d82)
+            self._devices = devices
+            self.kernel = _MockKernel()
+            self._handles: dict[int, tuple[str, str, int, bool]] = {}
+            self._responders: dict[int, bool] = {}
+            self.hid = _MockHidDll(self._responders)
+            self._next_h = 100
+
+        def paths(self, vid: int = 0x1532, pid: int | None = None) -> list[str]:
+            out = []
+            for p, _, _, _ in self._devices:
+                if f"vid_{vid:04x}" in p.lower() and (pid is None or f"pid_{pid:04x}" in p.lower()):
+                    out.append(p)
+            return out
+
+        def open(self, path: str):
+            for dev in self._devices:
+                if dev[0] == path:
+                    h = self._next_h
+                    self._next_h += 1
+                    self._handles[h] = dev
+                    self._responders[h] = dev[3]
+                    return h
+            raise OSError("not found")
+
+        def caps(self, h) -> dict:
+            return {"FeatureReportByteLength": self._handles[h][2]}
+
+        def product_string(self, h) -> str:
+            return self._handles[h][1]
+
+        @staticmethod
+        def error() -> dict:
+            return {"winerror": 0, "message": "ok"}
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        cfg = Path(tmp_dir) / "config.json"
+        # First launch: Razer mouse + unlisted new Blade 0x02C1 -> auto-detects 0x02C1 & saves it
+        mock1 = _MockNativeHid([
+            (r"\\?\hid#vid_1532&pid_0084&mi_00#mouse", "Razer DeathAdder V3", 91, False),
+            (r"\\?\hid#vid_1532&pid_02c1&mi_01#kbd", "Razer Blade 16 (2025)", 16, False),
+            (r"\\?\hid#vid_1532&pid_02c1&mi_02#ec", "Razer Blade 16 (2025)", 91, True),
+        ])
+        c1 = BladeHidClient(pid=None, config_path=cfg, native_hid=mock1)
+        ep1 = c1.connect()
+        assert ep1.endswith("#ec") and c1.pid == 0x02C1 and c1.pid_source == "auto-detected"
+        assert c1.saved_config_updated is True
+        assert load_saved_pid(cfg) == (0x02C1, "Razer Blade 16 (2025)")
+        c1.close()
+
+        # Second launch: immediately connects to saved PID 0x02C1 first
+        mock2 = _MockNativeHid([
+            (r"\\?\hid#vid_1532&pid_0255&mi_02#other", "Razer Blade 15", 91, True),
+            (r"\\?\hid#vid_1532&pid_02c1&mi_02#ec", "Razer Blade 16 (2025)", 91, True),
+        ])
+        c2 = BladeHidClient(pid=None, config_path=cfg, native_hid=mock2)
+        assert c2.pid == 0x02C1
+        ep2 = c2.connect()
+        assert ep2.endswith("#ec") and c2.pid == 0x02C1 and c2.pid_source == "saved"
+        assert c2.saved_config_updated is False
+        c2.close()
+
+        # Third launch on a different Blade (0x02C1 absent, 0x0255 present): falls back & updates saved PID!
+        mock3 = _MockNativeHid([
+            (r"\\?\hid#vid_1532&pid_0255&mi_02#rz09", "Razer Blade", 91, True),
+        ])
+        c3 = BladeHidClient(pid=None, config_path=cfg, native_hid=mock3)
+        ep3 = c3.connect()
+        assert ep3.endswith("#rz09") and c3.pid == 0x0255 and c3.pid_source == "auto-detected"
+        assert c3.saved_config_updated is True
+        assert load_saved_pid(cfg) == (0x0255, "Razer Blade")
+        c3.close()
+
     print(
         "Self-test passed: packet framing, allowlist bounds, v2 & stock RPM clamps, "
-        "Custom 4 boost sequence, nvidia-smi parser, live probe & EC ROM auto-detection, "
-        "powercfg parsers, system tray host, and UI hot-swap verified. No hardware accessed."
+        "Custom 4 boost sequence, auto-PID detection & persistence, nvidia-smi parser, "
+        "live probe & EC ROM auto-detection, powercfg parsers, system tray host, and UI hot-swap verified. "
+        "No hardware accessed."
     )
 
 
 def main() -> int:
+    if getattr(sys, "frozen", False):
+        if sys.stdout is None:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        if sys.stderr is None:
+            sys.stderr = open(os.devnull, "w", encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--self-test", action="store_true", help="Verify packets, clamps, auto-detection, Custom 4 logic, and UI without hardware")
+    parser.add_argument("--self-test", action="store_true", help="Verify packets, clamps, auto-PID, auto-detection, Custom 4 logic, and UI without hardware")
     parser.add_argument("--ec-rom", type=Path, default=None, help="Load EC mode/TDP/fan profile directly from a 256 KiB RZ09-0328 EC ROM (.bin)")
     parser.add_argument("--probe", type=Path, default=None, help="Load EC mode/TDP/fan profile directly from a verify-live probe.json")
     parser.add_argument("--stock-defaults", action="store_true", help="Force built-in stock EC v01.00 defaults")
     parser.add_argument("--v2-defaults", action="store_true", help="Use built-in v2 modded EC defaults")
-    parser.add_argument("--pid", type=lambda s: int(s, 0), default=0x0255, help="Razer Blade USB HID PID in hex (default 0x0255)")
+    parser.add_argument("--pid", type=lambda s: int(s, 0), default=None, help="Override Razer Blade USB HID PID in hex (omit to auto-detect & remember)")
+    parser.add_argument("--rescan-pid", action="store_true", help="Ignore saved PID and re-run automatic Razer Blade PID detection")
     args = parser.parse_args()
-    self_test(verify_ui=args.self_test)
     if args.self_test:
+        self_test(verify_ui=True)
         return 0
     if sys.platform != "win32":
         parser.error("Razer Blade HID GUI requires Windows")
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = get_app_root()
     profile = autodetect_startup_profile(
         repo_root,
         rom_path=args.ec_rom,
@@ -3232,7 +3627,7 @@ def main() -> int:
         v2_defaults=args.v2_defaults,
     )
     root = tk.Tk()
-    FanTesterApp(root, ec_profile=profile, pid=args.pid)
+    FanTesterApp(root, ec_profile=profile, pid=args.pid, rescan_pid=args.rescan_pid)
     root.mainloop()
     return 0
 

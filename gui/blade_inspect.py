@@ -22,6 +22,28 @@ import sys
 import time
 
 VID, PID = 0x1532, 0x0255
+KNOWN_BLADE_PIDS: tuple[int, ...] = (
+    0x0255,  # Blade 15 Base (Early 2020, RZ09-0328)
+    0x0253,  # Blade 15 Advanced (Early 2020, RZ09-0330)
+    0x0233, 0x023A, 0x023B, 0x0240, 0x0246, 0x024A, 0x024C, 0x024D,
+    0x0252, 0x0256, 0x0259, 0x025A,
+    0x026D, 0x026E, 0x026F, 0x0270, 0x0276, 0x0279, 0x027A,
+    0x028A, 0x028B, 0x028C, 0x028D, 0x028E,
+    0x029D, 0x029E, 0x029F, 0x02A0, 0x02A2, 0x02A4,
+    0x02B8, 0x02B9, 0x02BA,
+)
+
+
+def parse_pid_from_path(path: str) -> int | None:
+    """Extract 16-bit USB PID from a Windows HID device path (e.g. '...vid_1532&pid_0255...')."""
+    low = path.lower()
+    idx = low.find("pid_")
+    if idx < 0 or idx + 8 > len(low):
+        return None
+    try:
+        return int(low[idx + 4 : idx + 8], 16)
+    except ValueError:
+        return None
 TRANSACTION = 0x1F
 MIN_REPORT = 91
 QUERIES = (
@@ -115,6 +137,7 @@ class NativeHid:
             (self.hid, "HidP_GetCaps", C.c_long, [C.c_void_p, C.POINTER(HidCaps)]),
             (self.hid, "HidD_SetFeature", C.c_ubyte, [W.HANDLE, C.c_void_p, W.ULONG]),
             (self.hid, "HidD_GetFeature", C.c_ubyte, [W.HANDLE, C.c_void_p, W.ULONG]),
+            (self.hid, "HidD_GetProductString", C.c_ubyte, [W.HANDLE, C.c_void_p, W.ULONG]),
             (self.setup, "SetupDiGetClassDevsW", W.HANDLE, [C.POINTER(GUID), W.LPCWSTR, W.HWND, W.DWORD]),
             (self.setup, "SetupDiEnumDeviceInterfaces", W.BOOL, [W.HANDLE, C.c_void_p, C.POINTER(GUID), W.DWORD, C.POINTER(InterfaceData)]),
             (self.setup, "SetupDiGetDeviceInterfaceDetailW", W.BOOL, [W.HANDLE, C.POINTER(InterfaceData), C.c_void_p, W.DWORD, C.POINTER(W.DWORD), C.c_void_p]),
@@ -133,13 +156,15 @@ class NativeHid:
         code = C.get_last_error()
         return {"winerror": code, "message": C.FormatError(code).strip()}
 
-    def paths(self, vid: int = VID, pid: int = PID) -> list[str]:
+    def paths(self, vid: int = VID, pid: int | None = PID) -> list[str]:
         guid = GUID()
         self.hid.HidD_GetHidGuid(C.byref(guid))
         devices = self.setup.SetupDiGetClassDevsW(C.byref(guid), None, None, 0x12)
         if devices in (None, C.c_void_p(-1).value):
             raise C.WinError(C.get_last_error())
         paths = []
+        vid_tag = f"vid_{vid:04x}"
+        pid_tag = f"pid_{pid:04x}" if pid is not None else None
         try:
             index = 0
             while True:
@@ -158,11 +183,19 @@ class NativeHid:
                 C.cast(detail, C.POINTER(W.DWORD))[0] = 8 if C.sizeof(C.c_void_p) == 8 else 6
                 if self.setup.SetupDiGetDeviceInterfaceDetailW(devices, C.byref(data), detail, required, C.byref(required), None):
                     path = C.wstring_at(C.addressof(detail) + 4)
-                    if f"vid_{vid:04x}" in path.lower() and f"pid_{pid:04x}" in path.lower():
+                    low = path.lower()
+                    if vid_tag in low and (pid_tag is None or pid_tag in low):
                         paths.append(path)
         finally:
             self.setup.SetupDiDestroyDeviceInfoList(devices)
         return paths
+
+    def product_string(self, handle) -> str:
+        """Read UTF-16 USB product string for an open HID handle, or empty string if unavailable."""
+        buf = C.create_unicode_buffer(128)
+        if not self.hid.HidD_GetProductString(handle, buf, C.sizeof(buf)):
+            return ""
+        return buf.value.strip()
 
     def open(self, path: str):
         handle = self.kernel.CreateFileW(path, 0, 3, None, 3, 0, None)
@@ -240,7 +273,7 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true", help="Validate packet framing without accessing HID")
-    parser.add_argument("--pid", type=lambda s: int(s, 0), default=PID, help="Razer Blade USB HID PID in hex (default 0x0255)")
+    parser.add_argument("--pid", type=lambda s: int(s, 0), default=None, help="Razer Blade USB HID PID in hex (omit to scan all VID 0x1532 interfaces)")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     self_test()
@@ -252,7 +285,7 @@ def main():
     output = args.output or Path(__file__).resolve().parent.parent / "diagnostics" / "hid" / f"inspection-{datetime.now():%Y%m%d-%H%M%S}.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     report = {"created_at": datetime.now().astimezone().isoformat(), "read_only_query_allowlist": True,
-              "vid": f"0x{VID:04x}", "pid": f"0x{args.pid:04x}", "endpoints": []}
+              "vid": f"0x{VID:04x}", "pid": f"0x{args.pid:04x}" if args.pid is not None else "auto", "endpoints": []}
 
     def save():
         output.write_text(json.dumps(report, indent=2), encoding="utf-8")
