@@ -40,31 +40,31 @@ This repo contains:
 There isn't a limit to how much you can change the EC, as far as I am concerned, you can reprogram the EC to send morse code if you want, but that is pointless, normally you would rewrite the EC to change the fan limit or TDP limit.
 With my offline patching script, you can unlock **full `0–5500 RPM` manual control across every mode**
 
-> [!CAUTION]
-> **Read before flashing:** Flashing EC firmware always carries hardware risk if power is lost or the wrong file is flashed. **Never flash a ROM from a different laptop model**, follow the full step-by-step checklist in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
-> No copyrighted Razer firmware or flasher binaries are hosted here — you dump your own backup and patch it locally.
 
-
-### 1. How to dump the EC firmware (read-only, ~4.5 min)
+### 1. How to dump the EC firmware
 1. If you already have python installed locally proceed to step 2, if not: install [Python 3.10+](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**.
 2. Download this repository.
 3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_research/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
 4. Wait for "Press any key". Your EC is then saved as `ec-rom-00000-3ffff.bin` in the run folder. 
   
-### 2. How to modify the EC you extracted to what you want
-3. **Create your modded `0–5500 RPM` firmware offline**:
-   ```powershell
-   python ec_research/patch_ec_fan_range.py --stock path/to/ec-rom-00000-3ffff.bin --mirror-flag-ff
-   ```
-   *(Want custom CPU/GPU power limits too — like 25/35W Silent and 90W GPU in Custom Mode? See `ec_research/patch_ec_v2_power_fan.py`.)*
-4. **Safely flash your modded firmware**:
-   - Patch your copy of Razer's official `Razer_EC_Flash_v1.03.exe` with `python ec_research/patch_razer_flasher.py --in-exe Razer_EC_Flash_v1.03.exe` (fixes a serious bug in Razer's original flasher so it never reboots into a failed flash), or use `ec_research/ite_ec_flash_linux.py` on Linux for direct-eFlash boards.
-   - Follow the exact flashing and rollback instructions in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
-5. **Verify & enjoy**:
-   - Double-click **`ec_research/EcVerifyLive.cmd`** to confirm the mod is active, then open **`BladeFanControl.exe`** — drag the manual slider down to **`0 RPM`** to stop both fans completely, or pick any steady speed from **`~2000` to `5500 RPM`**!
+### 2. How to modify the EC you extracted to what you want and flash it
+> [!CAUTION]
+> **Read before flashing:** Flashing EC firmware always carries hardware risk if power is lost or the wrong file is flashed. **Never flash a ROM from a different laptop model**, follow the full step-by-step checklist in **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)**.
+> No copyrighted Razer firmware or flasher binaries are hosted here — you dump your own backup and patch it locally.
 
----
+**You have 3 method of patching/modding the EC(The first and third is the most recommended):**
+1. Use the auto-patcher program provided in release page
+2. Manually read through the structure of the EC and manually reprogram it
+3. Ask a AI agent to do it for you
 
+#### Method 1: Auto-Patcher
+
+
+#### Method 2: Manual programming
+Read all the MD of this repo including FINDINGS.MD and then you will understand how to do it
+
+#### Method 3: Ask for the help of a AI Agent
+Just send the URL of this repository to a AI you think is the smartest and send it the binary of the EC you extracted and ask it to parse it and give you options to mod it. Best if you do it with a Agent instead of a web AI model, for reference ChatGPT Sol 6+ MAX/ Astra 6.2 Max in codex can definitely do it, Gemini Neon/Carbon/Hydrogen/Argon in google antigravity has no problem as well.
 
 
 
