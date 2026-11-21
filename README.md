@@ -43,7 +43,7 @@ There isn't a limit to how much you can change the EC, as far as I am concerned,
 With my offline patching script, you can unlock **full `0–5500 RPM` manual control across every mode**
 
 
-### 1. How to dump the EC firmware
+### 1. How to dump/extract the EC firmware
 1. If you already have python installed locally proceed to step 2, if not: install [Python 3.10+](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**.
 2. Download this repository.
 3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_research/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
