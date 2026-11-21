@@ -8,7 +8,7 @@ This repo contains:
 
 ## 1. The GUI App
 
-- For **Razer Blade 15 Base (Early 2020, `RZ09-0328`)**, you can use the controller immediately with no risk:
+- For **Razer Blade 15 Base (Early 2020, `RZ09-0328`)**, you can use the controller immediately:
 
   Go to the **[Releases page](https://github.com/GepingY/Blade-EC-Control/releases)** and download **`BladeFanControl.exe`**, then you can use that app to control the fan with limited range of rpm.
 
