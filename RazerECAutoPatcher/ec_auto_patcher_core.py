@@ -19,7 +19,7 @@ Features:
     before allowing export.
 
 Run offline self-test suite:
-    python ec_research/ec_auto_patcher_core.py --self-test
+    python patcher/ec_auto_patcher_core.py --self-test
 """
 
 from __future__ import annotations

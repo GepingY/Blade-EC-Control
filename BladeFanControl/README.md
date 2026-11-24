@@ -1,4 +1,4 @@
-# Razer Blade Python HID Fan & Power Controller (`gui/`)
+# Razer Blade Python HID Fan & Power Controller (`controller/`)
 
 Zero-dependency pure-Python (`tkinter` + Win32 `ctypes`) Windows HID controller and Quiet/Performance preset toolkit.
 
@@ -22,26 +22,28 @@ Zero-dependency pure-Python (`tkinter` + Win32 `ctypes`) Windows HID controller 
 
 ## Usage
 
+Run these commands from the repository root.
+
 ```powershell
 # Offline self-test (no hardware touched)
-python gui/blade_fan_gui.py --self-test
+python controller/blade_fan_gui.py --self-test
 
 # Launch GUI (RZ09-0328 stock EC defaults, USB HID 1532:0255)
-python gui/blade_fan_gui.py
+python controller/blade_fan_gui.py
 # Or zero-console window:
-pythonw gui/blade_fan_gui.py
+pythonw controller/blade_fan_gui.py
 
 # Launch GUI with v2 modded EC tables or directly from a 256 KiB EC ROM
-python gui/blade_fan_gui.py --v2-defaults
-python gui/blade_fan_gui.py --ec-rom path/to/your_ec.bin
+python controller/blade_fan_gui.py --v2-defaults
+python controller/blade_fan_gui.py --ec-rom path/to/your_ec.bin
 
 # Read-only HID inspection (works with --pid for other Razer Blades)
-python gui/blade_inspect.py
-python gui/blade_inspect.py --pid 0x0255
-python gui/blade_fan_gui.py --pid 0x0255
+python controller/blade_inspect.py
+python controller/blade_inspect.py --pid 0x0255
+python controller/blade_fan_gui.py --pid 0x0255
 ```
 
 ### One-Click Quiet / Performance Presets (`Quiet.cmd` / `Performance.cmd` / `BladeQuiet.ps1`)
 - `Quiet.cmd`: Exports a backup of your current Windows power plan into `diagnostics/presets/`, clones a **Blade Quiet (boost disabled)** plan (AC min 5%, max 100%, `PERFBOOSTMODE = 0`), and switches EC to `Silent (5) + Auto`.
 - `Performance.cmd`: Restores your original Windows power plan and switches EC back to `Balanced (0) + Auto`.
-- `.\gui\BladeQuiet.ps1 -Action Status`: Read-only status check.
+- `.\controller\BladeQuiet.ps1 -Action Status`: Read-only status check.

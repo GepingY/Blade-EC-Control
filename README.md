@@ -6,6 +6,8 @@ This repo contains:
 
  The process and mechanism is very complicated(it took me a day to just write the MarkDown files), it's advised that you directly ask your trusted AI how to use
 
+Want to share a hardware finding or improve either app? See the [contributing guide](CONTRIBUTING.md).
+
 ## 1. The GUI App
 
 - For **Razer Blade 15 Base (Early 2020, `RZ09-0328`)**, you can use the controller immediately:
@@ -189,7 +191,8 @@ Your support helps more people discover this project and motivates further devel
 | **[FINDINGS.md](FINDINGS.md)** | Full technical reference for tinkerers (memory maps, registers, ACPI/PECI/GPU details, hidden `0xFE`/`0xFF` direct-PWM modes) |
 | **[docs/ACPI_FAN_ANALYSIS.md](docs/ACPI_FAN_ANALYSIS.md)** | Why BIOS/ACPI/DPTF fan settings don't control the physical fans |
 | **[ec_research/](ec_research/README.md)** | EC dumper, live verifier, `NDS32` disassembler, ROM analyzer, v1/v2 patchers, Linux flasher & Razer flasher safety patcher |
-| **[gui/](gui/README.md)** | Python source code for `BladeFanControl.exe` + Quiet/Performance preset scripts |
+| **[controller/](controller/README.md)** | Python source code for `BladeFanControl.exe` + Quiet/Performance preset scripts |
+| **[patcher/](patcher/README.md)** | Python core for the offline EC Auto-Patcher |
 
 ---
 
