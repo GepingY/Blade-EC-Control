@@ -1,4 +1,4 @@
-# EC, ACPI & Super I/O Research Toolkit (`ec_research/`)
+# EC, ACPI & Super I/O Research Toolkit (`ec_tools/`)
 
 Read-only hardware probes, Windows 11 HVCI-safe `IT8390E-256` ROM dumper, offline AndesCore `NDS32` disassembler/analyzer, Linux Follow-Mode flasher, and `.NET IL` flasher safety patcher.
 
@@ -10,12 +10,12 @@ For full hardware discoveries and decoded register maps, see [../FINDINGS.md](..
 
 | File | Purpose | Example |
 | :--- | :--- | :--- |
-| `analyze_ec_rom.py` | Decodes `0x3D000` thermal/fan/power slots, `0x35000` ADC current stepper, `0x2098C` `20%` PWM spin floor defaults, `0x2081C` 50-RPM PWM LUT, and diffs two ROMs (`--compare`) | `python ec_research/analyze_ec_rom.py my_ec.bin --steps` |
-| `dis_nds32.py` | Pure-Python mixed 16/32-bit AndesCore `NDS32` disassembler | `python ec_research/dis_nds32.py --bin my_ec.bin 12356:123a0` |
-| `patch_razer_flasher.py` | Offline `.NET IL` patcher for `Razer_EC_Flash_v1.03.exe` (fixes verify-failure brick bug; emits `_safe.exe` and `_recovery_in_follow_mode.exe`) | `python ec_research/patch_razer_flasher.py --in-exe path/to/Razer_EC_Flash_v1.03.exe` |
-| `ite_ec_flash_linux.py` | Linux Live USB `IT8390E-256` direct eFlash (`FF FF FE`) PM1 `0xDC` Follow-Mode verifier (`--verify-only`) and flasher (`--flash --i-accept-brick-risk`), plus offline mock-EC `--self-test` | `python ec_research/ite_ec_flash_linux.py --self-test` |
-| `patch_ec_fan_range.py` | Example `RZ09-0328 EC v01.00` v1 patcher: unlocks manual fan clamps `0–5500 RPM`, bumps `0x3FE000` cache `2 -> 3`, optional `--mirror-flag-ff` (`0x0008D = 0xFF`) | `python ec_research/patch_ec_fan_range.py --stock my_ec.bin --mirror-flag-ff` |
-| `patch_ec_v2_power_fan.py` | Example `RZ09-0328 EC v01.00` v2 patcher: `0–5500 RPM`, Custom TDP `35/45·60/80·60/90 W`, Custom Low/Med `90 W` GPU (`_Q33` / `CTGP=1`), Silent `25/35 W`, dual cache bump `v4`/`v8`, `0x0008D = 0xFF`, built-in `NDS32` emulator | `python ec_research/patch_ec_v2_power_fan.py --stock my_ec.bin` |
+| `analyze_ec_rom.py` | Decodes `0x3D000` thermal/fan/power slots, `0x35000` ADC current stepper, `0x2098C` `20%` PWM spin floor defaults, `0x2081C` 50-RPM PWM LUT, and diffs two ROMs (`--compare`) | `python ec_tools/analyze_ec_rom.py my_ec.bin --steps` |
+| `dis_nds32.py` | Pure-Python mixed 16/32-bit AndesCore `NDS32` disassembler | `python ec_tools/dis_nds32.py --bin my_ec.bin 12356:123a0` |
+| `patch_razer_flasher.py` | Offline `.NET IL` patcher for `Razer_EC_Flash_v1.03.exe` (fixes verify-failure brick bug; emits `_safe.exe` and `_recovery_in_follow_mode.exe`) | `python ec_tools/patch_razer_flasher.py --in-exe path/to/Razer_EC_Flash_v1.03.exe` |
+| `ite_ec_flash_linux.py` | Linux Live USB `IT8390E-256` direct eFlash (`FF FF FE`) PM1 `0xDC` Follow-Mode verifier (`--verify-only`) and flasher (`--flash --i-accept-brick-risk`), plus offline mock-EC `--self-test` | `python ec_tools/ite_ec_flash_linux.py --self-test` |
+| `patch_ec_fan_range.py` | Example `RZ09-0328 EC v01.00` v1 patcher: unlocks manual fan clamps `0–5500 RPM`, bumps `0x3FE000` cache `2 -> 3`, optional `--mirror-flag-ff` (`0x0008D = 0xFF`) | `python ec_tools/patch_ec_fan_range.py --stock my_ec.bin --mirror-flag-ff` |
+| `patch_ec_v2_power_fan.py` | Example `RZ09-0328 EC v01.00` v2 patcher: `0–5500 RPM`, Custom TDP `35/45·60/80·60/90 W`, Custom Low/Med `90 W` GPU (`_Q33` / `CTGP=1`), Silent `25/35 W`, dual cache bump `v4`/`v8`, `0x0008D = 0xFF`, built-in `NDS32` emulator | `python ec_tools/patch_ec_v2_power_fan.py --stock my_ec.bin` |
 
 ---
 
@@ -32,7 +32,7 @@ For full hardware discoveries and decoded register maps, see [../FINDINGS.md](..
 
 ## Setting Up Official PawnIO (Required for Live Hardware Dumping / Probing)
 
-No third-party binaries are distributed in this repository. To run `ec_sio_probe.py --run`, `--dump`, or `--verify-live`, download the two official signed releases from upstream and place them in `tools/pawnio/` (or pass `--pawnio-dir <folder>`):
+The probe uses the official PawnIO installer and signed module archive bundled in `ec_tools/third_party/pawnio/` by default. Pass `--pawnio-dir <folder>` to use a separate copy. [PawnIO package notes](third_party/pawnio/README.md)
 
 1. **`PawnIO_setup.exe`** (`v2.2.0`):
    - Release: <https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0>
@@ -45,6 +45,6 @@ No third-party binaries are distributed in this repository. To run `ec_sio_probe
 
 Verify your downloaded files offline before touching hardware:
 ```powershell
-python ec_research/ec_sio_probe.py --self-test
-python ec_research/ec_sio_probe.py --check
+python ec_tools/ec_sio_probe.py --self-test
+python ec_tools/ec_sio_probe.py --check
 ```

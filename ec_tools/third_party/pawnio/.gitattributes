@@ -1,0 +1,5 @@
+# ec_snapshot.py checks these files against their upstream SHA-256 hashes.
+LpcACPIEC.p -text
+PawnIOLib.cpp -text
+PawnIOLib.h -text
+pawnio_um.h -text

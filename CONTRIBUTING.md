@@ -18,10 +18,10 @@ You can also share an observation or ask a question through [GitHub Issues](http
 
 ## Improve either app
 
-Both apps are due for a GUI overhaul. GUI development is currently paused, so usability fixes and redesigns are especially welcome and likely to be merged. Screenshots or a short recording help reviewers see what changed.
+Both apps are due for a GUI overhaul. No GUI development is undergoing right now as far as I know, so usability fixes and redesigns are especially welcome and likely to be merged. Screenshots will help others see what changed.
 
-- `controller/` contains the Blade Fan Control GUI and its Windows launchers. [Controller README](controller/README.md)
-- `patcher/` contains the EC Auto-Patcher's Python core. The current GUI ships in the Windows release, and a new GUI built on the existing core is welcome. [Patcher README](patcher/README.md)
+- `BladeFanControl/` contains the Blade Fan Control GUI and its Windows launchers. [Controller README](BladeFanControl/README.md)
+- `RazerECAutoPatcher/` contains the EC Auto-Patcher's Python core. The current GUI ships in the Windows release, and a new GUI built on the existing core is welcome. [Patcher README](RazerECAutoPatcher/README.md)
 
 Changes to either app's behavior receive closer review before merging, especially changes to fan or power control, ROM validation, or patch output. Explain what behavior changes and which tests you ran.
 

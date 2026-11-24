@@ -1,8 +1,8 @@
 """Offline AndesCore NDS32 (16/32-bit mixed) disassembler for IT8390E EC ROM images.
 
 Usage:
-    python ec_research/dis_nds32.py 12356:123a0
-    python ec_research/dis_nds32.py --bin path/to/rom.bin 0e0f0:0e2c0
+    python ec_tools/dis_nds32.py 12356:123a0
+    python ec_tools/dis_nds32.py --bin path/to/rom.bin 0e0f0:0e2c0
 """
 
 import argparse

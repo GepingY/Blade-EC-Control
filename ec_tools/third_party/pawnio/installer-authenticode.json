@@ -1,0 +1,7 @@
+{
+  "Status": "Valid",
+  "StatusMessage": "Signature verified.",
+  "SignerSubject": "E=admin@namazso.eu, CN=namazso.eu, O=namazso, L=Debrecen, C=HU",
+  "SignerThumbprint": "F380DCC9F706E2756A5047B832FFE719E1BC35F5",
+  "TimeStamperSubject": "CN=Microsoft Public RSA Time Stamping Authority, OU=nShield TSS ESN:7A1A-05E0-D947, OU=Microsoft Ireland Operations Limited, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+}

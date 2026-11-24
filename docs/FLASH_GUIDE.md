@@ -12,24 +12,24 @@
 
 ## Step 1 — Dump Your Own Golden Stock EC ROM (Read-Only, Windows 11 HVCI-Safe)
 
-1. Download official signed PawnIO assets (no need to disable Windows 11 Memory Integrity / Secure Boot):
+1. Use the bundled official PawnIO assets. Windows 11 Memory Integrity and Secure Boot can stay enabled for this step. [PawnIO package](../ec_tools/third_party/pawnio/)
    - **`PawnIO_setup.exe`** (`v2.2.0`): `https://github.com/namazso/PawnIO.Setup/releases/tag/2.2.0`
      - Expected SHA-256: `1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032`
    - **`release_0_2_12.zip`** (`v0.2.12`, contains signed `LpcIO.bin`): `https://github.com/namazso/PawnIO.Modules/releases/tag/0.2.12`
      - Expected SHA-256: `09698897ce19b92f1043a2e322cfcf0b1fe823e0b576971b178a65244fb0af9d`
-   - Place both files inside `tools/pawnio/` in this repository (or pass `--pawnio-dir <folder>`).
+   - Pass `--pawnio-dir <folder>` if you keep the assets in a different directory.
 2. Run offline verification:
    ```powershell
-   python ec_research/ec_sio_probe.py --check
+   python ec_tools/ec_sio_probe.py --check
    ```
 3. Run read-only Super I/O & BRAM discovery (`EcSioProbe.cmd` or elevated):
    ```powershell
-   python ec_research/ec_sio_probe.py --run
+   python ec_tools/ec_sio_probe.py --run
    ```
    Confirm `chip_id = 0x8390`, `reg22 = 0x82` (256 KiB), active BAR `0x0302`, and record your Board `SSID` and EC version from mailbox `0x300`.
 4. Dump all 256 KiB (`~4.5 minutes`, read-only via BRAM0 `0x0302` cmd `0x90`; PawnIO auto-uninstalls afterward):
    ```powershell
-   python ec_research/ec_sio_probe.py --dump
+   python ec_tools/ec_sio_probe.py --dump
    ```
    Back up the dumped `ec-rom-00000-3ffff.bin` safely off-machine (USB drive / cloud backup) before doing anything else!
 
@@ -39,8 +39,8 @@
 
 Inspect your stock dump offline:
 ```powershell
-python ec_research/analyze_ec_rom.py path/to/ec-rom-00000-3ffff.bin --steps
-python ec_research/dis_nds32.py --bin path/to/ec-rom-00000-3ffff.bin 12356:123a0
+python ec_tools/analyze_ec_rom.py path/to/ec-rom-00000-3ffff.bin --steps
+python ec_tools/dis_nds32.py --bin path/to/ec-rom-00000-3ffff.bin 12356:123a0
 ```
 
 ### Critical Check: External SPI Mirror Flag (`0x0008D = 0xFF`)
@@ -52,10 +52,10 @@ On `RZ09-0328` (`DA550-MB`) — and potentially other `IT8390E` Blades wired wit
 Both patchers verify the exact stock `RZ09-0328 v01.00` SHA-256 (`c676ff55da486c07cb8897c2e4bcb891e3140463864dbde7f615cef4c5a4b95d`) before modifying anything:
 ```powershell
 # v1: 0–5500 RPM manual clamps + 0x3FE000 cache v2->v3 + 0x0008D=0xFF mirror flag
-python ec_research/patch_ec_fan_range.py --stock path/to/ec-rom-00000-3ffff.bin --mirror-flag-ff
+python ec_tools/patch_ec_fan_range.py --stock path/to/ec-rom-00000-3ffff.bin --mirror-flag-ff
 
 # v2: 0–5500 RPM + Custom TDP (35/45, 60/80, 60/90W) + 90W GPU Custom Low/Med + Silent 25/35W + cache v4/v8 + mirror-ready stock rollback
-python ec_research/patch_ec_v2_power_fan.py --stock path/to/ec-rom-00000-3ffff.bin
+python ec_tools/patch_ec_v2_power_fan.py --stock path/to/ec-rom-00000-3ffff.bin
 ```
 
 ---
@@ -68,16 +68,16 @@ Use this path on `IT8390E-256` boards whose Follow-Mode SPI ID is **`FF FF FE`**
 1. Disable Secure Boot temporarily in BIOS (Linux kernel lockdown blocks `/dev/port` when Secure Boot is enabled) and boot a Linux Live USB.
 2. **Board check (read-only)**:
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --check-only
+   sudo python3 ec_tools/ite_ec_flash_linux.py --check-only
    ```
 3. **Mandatory dry run (ZERO erase / ZERO write)**:
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --verify-only --stock path/to/ec-rom-00000-3ffff.bin
+   sudo python3 ec_tools/ite_ec_flash_linux.py --verify-only --stock path/to/ec-rom-00000-3ffff.bin
    ```
    *(If your board uses an external mirror SPI chip such as `GD25Q64`, `--verify-only` will cleanly report the non-`FF FF FE` SPI ID and abort without touching flash — use Path B instead!)*
 4. **Flash (only after `--verify-only` passes 100%)**:
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --flash path/to/patched.bin --i-accept-brick-risk
+   sudo python3 ec_tools/ite_ec_flash_linux.py --flash path/to/patched.bin --i-accept-brick-risk
    ```
 5. Wait for `FLASH & 256 KiB VERIFY SUCCEEDED 100%`, shut down (`sudo poweroff`), wait 10 s, and power back on.
 
@@ -88,7 +88,7 @@ Use this path on `IT8390E-256` boards whose Follow-Mode SPI ID is **`FF FF FE`**
 Obtain `Razer_EC_Flash_v1.03.exe` (`46,592` bytes, SHA-256 `3590f72531078eb9562f8ed864753ea710a1d2723f693923b99b3a981b78f07b`) and its accompanying `WinRing0*` files from an official Razer EC updater package for your laptop family, then **patch it offline before running**:
 
 ```powershell
-python ec_research/patch_razer_flasher.py --orig path/to/Razer_EC_Flash_v1.03.exe
+python ec_tools/patch_razer_flasher.py --orig path/to/Razer_EC_Flash_v1.03.exe
 ```
 
 This emits two `.NET 4.8`-verified executables beside the original:
@@ -118,7 +118,7 @@ This emits two `.NET 4.8`-verified executables beside the original:
 
 - **Live read-only verification** (re-enable HVCI first — PawnIO works with HVCI ON!):
   ```powershell
-  python ec_research/ec_sio_probe.py --verify-live
+  python ec_tools/ec_sio_probe.py --verify-live
   ```
   On `RZ09-0328`, confirm:
   - `mmio_flhctrl3r_f01063 = "0x88"` (bit 7 = mirror completed)

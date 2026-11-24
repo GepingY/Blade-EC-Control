@@ -26,8 +26,8 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parent.parent
-PACKAGE = (ROOT / "tools" / "pawnio") if (ROOT / "tools" / "pawnio").is_dir() else (ROOT / "diagnostics" / "tools" / "pawnio")
+EC_TOOLS_DIR = Path(__file__).resolve().parent
+ROOT = EC_TOOLS_DIR.parent
 MODULE_SHA256 = "c38fd116e7aff4d1fdb0a494e296be0a6708e5a22fc72f14587442fb7f8f7906"
 ARCHIVE_SHA256 = "09698897ce19b92f1043a2e322cfcf0b1fe823e0b576971b178a65244fb0af9d"
 INSTALLER_SHA256 = "1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032"
@@ -37,6 +37,17 @@ READ_DELAY = 0.020
 POLL_DELAY = 0.001
 TRANSACTION_TIMEOUT = 0.100
 SNAPSHOT_TIMEOUT = 15.0
+
+
+def default_pawnio_dir() -> Path:
+    bundled = EC_TOOLS_DIR / "third_party" / "pawnio"
+    for candidate in (bundled, ROOT / "tools" / "pawnio", ROOT / "diagnostics" / "tools" / "pawnio"):
+        if candidate.is_dir():
+            return candidate
+    return bundled
+
+
+PACKAGE = default_pawnio_dir()
 
 
 class SnapshotError(RuntimeError):

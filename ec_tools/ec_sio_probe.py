@@ -4,7 +4,7 @@ Default / --check: offline package, archive, module hash, C API, and mock-protoc
 self-test; never loads a DLL, opens a driver, or accesses hardware ports.
 
 --run (requires Windows Administrator / UAC): uses official WHCP-signed PawnIO +
-the signed LpcIO.bin module from diagnostics/tools/pawnio/release_0_2_12.zip to:
+the signed LpcIO.bin module from ec_tools/third_party/pawnio/release_0_2_12.zip to:
   1. Read Super I/O ID/version registers (0x20..0x2F on 0x2E/0x2F, falling back
      to 0x4E/0x4F only if 0x2E/0x2F returns no device), scan LDN BARs 0x00..0x1F,
      and read vendor config regs (0xF0..0xFF) on LDNs 0x0F..0x12.
@@ -38,7 +38,10 @@ import sys
 import time
 import zipfile
 
-import ec_snapshot as ec
+if __package__:
+    from . import ec_snapshot as ec
+else:
+    import ec_snapshot as ec
 
 LPCIO_SHA256 = "b3896a1cab0d808fca31fe2ebcae045d59dac690da87b17c858bb8da357eb45e"
 LPCIO_MEMBER = "LpcIO.bin"
@@ -71,10 +74,7 @@ class SioProbeError(RuntimeError):
 def resolve_pawnio_dir(pawnio_dir=None):
     if pawnio_dir is not None:
         return Path(pawnio_dir)
-    for candidate in (ec.ROOT / "tools" / "pawnio", ec.ROOT / "diagnostics" / "tools" / "pawnio"):
-        if candidate.is_dir():
-            return candidate
-    return ec.ROOT / "tools" / "pawnio"
+    return ec.default_pawnio_dir()
 
 
 def load_verified_lpcio_bytes(pawnio_dir=None):
@@ -1207,7 +1207,7 @@ def _run_setup(args, log_path, pawnio_dir=None):
     return sig
 
 
-def _with_lpcio_run(dir_prefix, scope, keep_driver, worker, pawnio_dir=None):
+def _with_lpcio_run(dir_prefix, scope, keep_driver, worker, pawnio_dir=None, diagnostics_dir=None):
     check = offline_check(pawnio_dir=pawnio_dir)
     if not check["passed"]:
         raise SioProbeError(f"Offline checks failed: {check}")
@@ -1216,7 +1216,9 @@ def _with_lpcio_run(dir_prefix, scope, keep_driver, worker, pawnio_dir=None):
     if not ctypes.WinDLL("shell32").IsUserAnAdmin():
         raise SioProbeError("Windows Administrator privileges (UAC) are required; use EcSioProbe.cmd or EcRomDump.cmd")
 
-    run_dir = ec.ROOT / "diagnostics" / (dir_prefix + datetime.now().strftime("%Y%m%d-%H%M%S"))
+    if diagnostics_dir is None:
+        diagnostics_dir = ec.ROOT / "diagnostics"
+    run_dir = diagnostics_dir / (dir_prefix + datetime.now().strftime("%Y%m%d-%H%M%S"))
     run_dir.mkdir(parents=True, exist_ok=False)
     report = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -1339,7 +1341,7 @@ def run_rom_dump(keep_driver=False, protocol="bram0_90", force_slow=False, pawni
     return 0
 
 
-def run_verify_live(keep_driver=False, pawnio_dir=None):
+def verify_live_report(keep_driver=False, pawnio_dir=None, *, diagnostics_dir=None):
     def worker(client, run_dir, report):
         info = SioProbeSession(client).verify_live_ec(
             lock_factory=lambda: NamedMutex(ISABUS_MUTEX),
@@ -1347,13 +1349,18 @@ def run_verify_live(keep_driver=False, pawnio_dir=None):
         )
         report["verify_live"] = info
 
-    run_dir, report = _with_lpcio_run(
+    return _with_lpcio_run(
         "verify-live-",
         "Fast read-only BRAM0 0x0302 cmd 0x90 check of live EC ROM patch bytes and active SRAM fan/cache state",
         keep_driver,
         worker,
         pawnio_dir=pawnio_dir,
+        diagnostics_dir=diagnostics_dir,
     )
+
+
+def run_verify_live(keep_driver=False, pawnio_dir=None):
+    run_dir, report = verify_live_report(keep_driver=keep_driver, pawnio_dir=pawnio_dir)
     print(json.dumps({"run_dir": str(run_dir), "verify_live": report.get("verify_live")}, indent=2))
     return 0
 
@@ -1366,7 +1373,7 @@ def main():
     mode.add_argument("--run", action="store_true", help="Run Stage-2 read-only probe via official PawnIO (requires Admin)")
     mode.add_argument("--verify-live", action="store_true", help="Fast read-only check of live EC ROM patch bytes & SRAM clamps via PawnIO (requires Admin)")
     mode.add_argument("--dump", action="store_true", help="Canary-verify BRAM and dump 256 KiB EC ROM via PawnIO (requires Admin)")
-    parser.add_argument("--pawnio-dir", type=Path, default=None, help="Directory containing official PawnIO_setup.exe and release_0_2_12.zip (default: tools/pawnio)")
+    parser.add_argument("--pawnio-dir", type=Path, default=None, help="Directory containing official PawnIO_setup.exe and release_0_2_12.zip (default: ec_tools/third_party/pawnio)")
     parser.add_argument("--protocol", choices=("bram0_90", "bram1_d0"), default="bram0_90", help="BRAM read protocol for --dump")
     parser.add_argument("--force-slow", action="store_true", help="Allow full 256 KiB dump even if estimated duration exceeds 900s")
     parser.add_argument("--keep-driver", action="store_true", help="Leave PawnIO installed if this run installed it")

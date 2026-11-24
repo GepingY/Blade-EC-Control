@@ -46,6 +46,7 @@ from tkinter import filedialog, ttk
 from typing import Callable
 import zlib
 
+import probe_bundle
 from blade_inspect import (
     KNOWN_BLADE_PIDS,
     MIN_REPORT,
@@ -79,6 +80,7 @@ SUB_PROCESSOR_GUID = "54533251-82be-4824-96c1-47b60b740d00"
 PERFBOOSTMODE_GUID = "be337238-0d82-4146-a960-4f3749d470c7"
 DEFAULT_HIGH_PERF_GUID = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"
 DEFAULT_QUIET_PLAN_GUID = ""
+EC_TOOLS_DIR = "ec_tools"
 
 _NDS32_R45MAP = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 28, 29)
 
@@ -87,7 +89,7 @@ def get_app_root() -> Path:
     """Return the repository root (or executable directory when frozen with PyInstaller)."""
     if getattr(sys, "frozen", False):
         exe_dir = Path(sys.executable).resolve().parent
-        if not (exe_dir / "ec_research").is_dir() and (exe_dir.parent / "ec_research").is_dir():
+        if not (exe_dir / EC_TOOLS_DIR).is_dir() and (exe_dir.parent / EC_TOOLS_DIR).is_dir():
             return exe_dir.parent
         return exe_dir
     return Path(__file__).resolve().parent.parent
@@ -751,11 +753,11 @@ def load_profile_from_probe(probe_path: Path) -> EcProfile:
 
 
 def find_latest_live_probe(repo_root: Path, require_tdp_readback: bool = True) -> tuple[Path, EcProfile] | None:
-    diag_dir = repo_root / "diagnostics"
-    if not diag_dir.is_dir():
-        return None
+    diagnostic_dirs = [repo_root / "diagnostics"]
+    if getattr(sys, "frozen", False):
+        diagnostic_dirs.append(probe_bundle.local_diagnostics())
     candidates = sorted(
-        diag_dir.glob("verify-live-*/probe.json"),
+        (report for directory in diagnostic_dirs for report in directory.glob("verify-live-*/probe.json")),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -2052,18 +2054,19 @@ class BladeHidClient:
 
 
 def run_live_ec_probe(repo_root: Path) -> Path:
-    """Invoke read-only ec_research/ec_sio_probe.py --verify-live (with UAC if needed) and return new probe.json."""
+    """Run the read-only EC probe and return the resulting probe.json."""
     if sys.platform != "win32":
         raise RuntimeError("Live EC silicon probe requires Windows")
-    probe_script = repo_root / "ec_research" / "ec_sio_probe.py"
+    if getattr(sys, "frozen", False):
+        return probe_bundle.run_live_probe()
+
+    probe_script = repo_root / EC_TOOLS_DIR / "ec_sio_probe.py"
     if not probe_script.is_file():
         raise FileNotFoundError(
-            "Live EC probe requires ec_research/ec_sio_probe.py from the repository next to the app "
+            "Live EC probe requires ec_tools/ec_sio_probe.py from the repository next to the app "
             "(or click 'Load ROM / Probe' to open an existing .bin or probe.json)."
         )
-    py_exe = (shutil.which("python") or shutil.which("python3")) if getattr(sys, "frozen", False) else sys.executable
-    if not py_exe:
-        raise RuntimeError("Python 3 is required on PATH to run ec_research/ec_sio_probe.py from the standalone .exe.")
+    py_exe = sys.executable
     diag_dir = repo_root / "diagnostics"
     before = {p: p.stat().st_mtime for p in diag_dir.glob("verify-live-*/probe.json")} if diag_dir.is_dir() else {}
 
@@ -2087,7 +2090,7 @@ def run_live_ec_probe(repo_root: Path) -> Path:
         wd_esc = str(repo_root).replace("'", "''")
         ps_cmd = (
             f"$p = Start-Process -FilePath '{py_esc}' "
-            f"-ArgumentList 'ec_research\\ec_sio_probe.py --verify-live' "
+            f"-ArgumentList '{probe_script.relative_to(repo_root)} --verify-live' "
             f"-WorkingDirectory '{wd_esc}' -Verb RunAs -PassThru -Wait; "
             f"exit $p.ExitCode"
         )
@@ -2646,7 +2649,7 @@ class FanTesterApp:
             return
         self._busy = True
         self.probe_ec_btn.configure(state="disabled")
-        self._log("Launching read-only live EC probe (ec_sio_probe.py --verify-live; approve UAC prompt if shown)...")
+        self._log("Launching the read-only live EC probe. Approve the Windows administrator prompt if shown.")
 
         def task():
             probe_path = run_live_ec_probe(self._repo_root)
@@ -3614,6 +3617,8 @@ def main() -> int:
     parser.add_argument("--rescan-pid", action="store_true", help="Ignore saved PID and re-run automatic Razer Blade PID detection")
     args = parser.parse_args()
     if args.self_test:
+        if getattr(sys, "frozen", False):
+            probe_bundle.check_bundle()
         self_test(verify_ui=True)
         return 0
     if sys.platform != "win32":

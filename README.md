@@ -48,7 +48,7 @@ With my offline patching script, you can unlock **full `0–5500 RPM` manual con
 ### 1. How to dump/extract the EC firmware
 1. If you already have python installed locally proceed to step 2, if not: install [Python 3.10+](https://www.python.org/downloads/) and tick **"Add python.exe to PATH"**.
 2. Download this repository.
-3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_research/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
+3. Enter the folder of this repository that you(Blade-EC-Control) and double-click `ec_tools/EcRomDump.cmd` and click **Yes** on the UAC prompt. The script installs PawnIO temporarily, reads the EC, then uninstalls PawnIO.
 4. Wait for "Press any key". Your EC backup is saved inside `diagnostics/rom-dump-<timestamp>/ec-rom-00000-3ffff.bin` (the exact folder path is printed in the window).
 
 ### 2. How to modify the EC you extracted
@@ -110,7 +110,7 @@ Just send the URL of this repository to a AI you think is the smartest and send 
    - **Delete `CH551_EC_01_01.bin` immediately** so you can never accidentally flash the `RZ09-0330` ROM onto your board.
    - Run our offline `.NET` safety patcher against `Razer_EC_Flash_v1.03.exe`, change the path as needed:
      ```powershell
-     python ec_research/patch_razer_flasher.py --in-exe ec_flash/Razer_EC_Flash_v1.03.exe --out-dir ec_flash
+     python ec_tools/patch_razer_flasher.py --in-exe ec_flash/Razer_EC_Flash_v1.03.exe --out-dir ec_flash
      ```
    - This creates two safe executables inside `ec_flash\`:
      - **`Razer_EC_Flash_v1.03_safe.exe`**: Fixes Razer's verify-failure bug so if verification ever fails, it skips `0xFC` (Exit Idle) and exits with code `2` instead of forcing a reboot into a bad flash.
@@ -142,27 +142,27 @@ Just send the URL of this repository to a AI you think is the smartest and send 
 ---
 
 #### Option B: Flash on Linux Live USB (Direct Internal eFlash Boards where `SPI ID == FF FF FE`)
-If your Blade's `IT8390E-256` flashes internal eFlash directly (`SPI ID == FF FF FE` rather than an external `GD25Q64`), you can use our pure-Python Linux flasher (`ec_research/ite_ec_flash_linux.py`), which includes a **100% read-only `--verify-only` dry run** and automatic per-sector retries without needing `WinRing0`:
+If your Blade's `IT8390E-256` flashes internal eFlash directly (`SPI ID == FF FF FE` rather than an external `GD25Q64`), you can use our pure-Python Linux flasher (`ec_tools/ite_ec_flash_linux.py`), which includes a **100% read-only `--verify-only` dry run** and automatic per-sector retries without needing `WinRing0`:
 1. Temporarily disable **Secure Boot** in BIOS (Linux blocks `/dev/port` under Secure Boot lockdown) and boot a **Linux Live USB** (e.g., Ubuntu).
 2. **Read-only board check:**
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --check-only
+   sudo python3 ec_tools/ite_ec_flash_linux.py --check-only
    ```
 3. **Mandatory read-only dry run (zero erase / zero write):**
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --verify-only --stock path/to/ec-rom-00000-3ffff.bin
+   sudo python3 ec_tools/ite_ec_flash_linux.py --verify-only --stock path/to/ec-rom-00000-3ffff.bin
    ```
    *(If this reports an external SPI chip ID instead of `FF FF FE`, it will safely abort without touching flash — use **Option A** instead.)*
 4. **Flash the patched ROM (only after `--verify-only` passes 100%):**
    ```bash
-   sudo python3 ec_research/ite_ec_flash_linux.py --flash path/to/your-patched-ec.bin --i-accept-brick-risk
+   sudo python3 ec_tools/ite_ec_flash_linux.py --flash path/to/your-patched-ec.bin --i-accept-brick-risk
    ```
 5. Wait for `FLASH & 256 KiB VERIFY SUCCEEDED 100%`, shut down completely (`sudo poweroff`), wait 10 seconds, and power back on.
 
 ---
 
 #### Post-Flash Verification & Rolling Back to Stock
-- **Verify live:** Back in Windows (with HVCI re-enabled), double-click **`ec_research/EcVerifyLive.cmd`** (or run `python ec_research/ec_sio_probe.py --verify-live`) to confirm your patched bytes, cache version, and new RPM/power limits are active in live EC RAM.
+- **Verify live:** Back in Windows (with HVCI re-enabled), double-click **`ec_tools/EcVerifyLive.cmd`** (or run `python ec_tools/ec_sio_probe.py --verify-live`) to confirm your patched bytes, cache version, and new RPM/power limits are active in live EC RAM.
 - **Rollback to stock anytime:** Flash your stock backup `.bin` (with `0x0008D = 0xFF` on mirror boards) using the exact same steps above. On first boot, the stock firmware detects the bumped cache version and automatically rebuilds the external BIOS SPI caches back to factory defaults.
 
 ---
@@ -190,9 +190,11 @@ Your support helps more people discover this project and motivates further devel
 | **[docs/FLASH_GUIDE.md](docs/FLASH_GUIDE.md)** | Step-by-step EC dump, patch, flash, live verification & stock rollback guide |
 | **[FINDINGS.md](FINDINGS.md)** | Full technical reference for tinkerers (memory maps, registers, ACPI/PECI/GPU details, hidden `0xFE`/`0xFF` direct-PWM modes) |
 | **[docs/ACPI_FAN_ANALYSIS.md](docs/ACPI_FAN_ANALYSIS.md)** | Why BIOS/ACPI/DPTF fan settings don't control the physical fans |
-| **[ec_research/](ec_research/README.md)** | EC dumper, live verifier, `NDS32` disassembler, ROM analyzer, v1/v2 patchers, Linux flasher & Razer flasher safety patcher |
-| **[controller/](controller/README.md)** | Python source code for `BladeFanControl.exe` + Quiet/Performance preset scripts |
-| **[patcher/](patcher/README.md)** | Python core for the offline EC Auto-Patcher |
+| **[ec_tools/](ec_tools/README.md)** | EC dumper, live verifier, `NDS32` disassembler, ROM analyzer, v1/v2 patchers, Linux flasher & Razer flasher safety patcher |
+| **[ec_tools/third_party/](ec_tools/third_party/)** | Bundled PawnIO and ACPICA tools, with PawnIO provenance and verification records |
+| **[BladeFanControl/](BladeFanControl/README.md)** | Python source code for `BladeFanControl.exe` + Quiet/Performance preset scripts |
+| **[RazerECAutoPatcher/](RazerECAutoPatcher/README.md)** | Python core for the offline EC Auto-Patcher |
+| **`diagnostics/`** | Local EC dumps, logs, and preset backups |
 
 ---
 

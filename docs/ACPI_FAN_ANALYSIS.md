@@ -32,8 +32,8 @@ The BIOS `Active Trip Point 0/1 Fan Speed` percentages feed an **unused Intel re
 
 ## Reproducing on Your Own Machine
 
-1. Dump your own ACPI tables read-only with `python ec_research/acpi_inspect.py`.
-2. Download official ACPICA `iasl` from [open-acpica/acpica releases](https://github.com/open-acpica/acpica/releases/tag/20260408) (`iasl-win-20260408.zip`, SHA-256 `121f5e4f30b1df63d09052294e4a605d4dee2dfb9599fa24af4ac6015df02b70`).
+1. Dump your own ACPI tables read-only with `python ec_tools/acpi_inspect.py`.
+2. Extract `iasl` from the bundled ACPICA archive (SHA-256 `121f5e4f30b1df63d09052294e4a605d4dee2dfb9599fa24af4ac6015df02b70`). [Bundled archive](../ec_tools/third_party/acpica/iasl-win-20260408.zip) · [Upstream release](https://github.com/open-acpica/acpica/releases/tag/20260408)
 3. Disassemble each table individually (`iasl -dl -d <table>.aml`) and inspect `H_EC`, `LPCB.EC0`, `Opt1Tabl` (`GPS` / `CTGP` / `NDTT`), and `Ther_Rvp`.
 
 Reference Intel template: [Comet Lake `Thermal.asl` in Slim Bootloader](https://github.com/slimbootloader/slimbootloader/blob/master/Platform/CometlakeBoardPkg/AcpiTables/Ssdt/Thermal.asl).

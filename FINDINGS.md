@@ -30,7 +30,7 @@
 ## 2. EC Firmware Architecture & Read-Only ROM Extraction (`IT8390E-256`, `v01.00`)
 
 ### How the 256 KiB EC ROM Is Dumped Without `WinRing0` or `0x62/0x66`
-- Implemented in `ec_research/ec_sio_probe.py --dump` using official WHCP-signed **`PawnIO` 2.2.0** + signed **`LpcIO.bin`** (auto-uninstalled cleanly afterward unless `--keep-driver` is passed).
+- Implemented in `ec_tools/ec_sio_probe.py --dump` using official WHCP-signed **`PawnIO` 2.2.0** + signed **`LpcIO.bin`** (auto-uninstalled cleanly afterward unless `--keep-driver` is passed).
 - Super I/O `0x2E/0x2F` confirms **`Chip ID = 0x8390`**, `reg 0x22 = 0x82` (256 KiB internal eFlash); `0x300` mailbox confirms `version = "01.00"`, `SSID = 0x2011`; `[0x000802ED] = 0x03` (`SKID = 3`).
 - Uses the EC's own read-only **BRAM0 `0x0302` command `0x90`** memory-read protocol (never touching `0x62/0x66` or I2EC `0x103F`), reading all `262,144` bytes in `~280 s` (`~840 B/s`) with canary verification at `0x00000`, `0x00080` (`"ITE8390EC-V01.00"`), and `0x10000`.
 - **Reference Stock `RZ09-0328 EC v01.00` SHA-256**: `c676ff55da486c07cb8897c2e4bcb891e3140463864dbde7f615cef4c5a4b95d`.
@@ -50,7 +50,7 @@
 | `0x37000..0x3A2AF` | `@gddv` DataVault | 4 identical `687`-byte Intel DTT DataVault copies (`0x37000..0x3a000`, CRC/tag `0x941fe5a0`) |
 | `0x3B000..0x3EFFF` | Thermal / Fan / Power Profiles | 4 identical SKU banks (`0x3b000..0x3e000`), indexed by `SKID` (`[0x802ED] = 0x03` selects **`0x3D000`**); each bank holds 8 × `0x200` B mode slots (`0..7`) |
 
-*(Verify all tables offline anytime with `python ec_research/analyze_ec_rom.py <rom.bin> --steps` and disassemble any range with `python ec_research/dis_nds32.py --bin <rom.bin> <start_hex>:<end_hex>`.)*
+*(Verify all tables offline anytime with `python ec_tools/analyze_ec_rom.py <rom.bin> --steps` and disassemble any range with `python ec_tools/dis_nds32.py --bin <rom.bin> <start_hex>:<end_hex>`.)*
 
 ---
 
@@ -221,7 +221,7 @@ Protocol (`0x02218..0x022fe`): Bank `0..7` (`0xF02290`), start reg (`0xF02291`),
    - Remapping Super I/O `LDN 0x11` from `0x62/0x66` → `0x202/0x206` (with Intel PCH `PCI 0:31:0 reg 0x82 |= 0x0200` `GAMEL_LPC_EN`) cleanly isolates flashing from `ACPI.sys`.
 3. **Verify-Failure Brick Bug in Official `Razer_EC_Flash_v1.03.exe` (`IL_095B..IL_0AD8`)**:
    - On a verify mismatch the original binary prints `.......Fail` and sets `verifyfail = 1`, but due to missing braces around `if (verifyfail == 0)` it still prints `Verify .........100%`, unconditionally sends `EC_Exit_Idle` (`0xFC`), and unconditionally forces a reboot (`DoExitWin(6)`) if `REBOOT=1`.
-   - `ec_research/patch_razer_flasher.py` offline-patches `Program::Main` (19-byte IL diff, `.NET 4.8` JIT-verified) to emit **`Razer_EC_Flash_v1.03_safe.exe`** (skips `Verify 100%`, `0xFC`, and `DoExitWin` on mismatch; exits with code `2` leaving EC parked safely in Follow Mode on `0x202/0x206`) and **`Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe`** (NOPs `Send_EC_Update_Qevent` and `EC_Write_Enable` so you can immediately re-flash without hanging on a second `0xDC`/`0x33`).
+   - `ec_tools/patch_razer_flasher.py` offline-patches `Program::Main` (19-byte IL diff, `.NET 4.8` JIT-verified) to emit **`Razer_EC_Flash_v1.03_safe.exe`** (skips `Verify 100%`, `0xFC`, and `DoExitWin` on mismatch; exits with code `2` leaving EC parked safely in Follow Mode on `0x202/0x206`) and **`Razer_EC_Flash_v1.03_recovery_in_follow_mode.exe`** (NOPs `Send_EC_Update_Qevent` and `EC_Write_Enable` so you can immediately re-flash without hanging on a second `0xDC`/`0x33`).
 4. **Live Hardware Mirror Discovery (`0x0008D = 0xFF` → `GD25Q64` to Internal eFlash)**:
    - On `RZ09-0328`, flashing a patched image whose ITE signature byte `0x0008D` remained `0x00` (as dumped from internal eFlash) updated `GD25Q64` external SPI, but `IT8390E` skipped mirroring on reboot (`FLHCTRL3R` `0x00F01063 = 0x08`, internal ROM stayed stock `v01.00`).
    - Setting **`0x0008D = 0xFF`** (matching Razer's official updater images) triggered hardware mirroring from `GD25Q64` → internal 256 KiB eFlash on reboot (`FLHCTRL3R = 0x88` bit 7 mirror-done, `0x0008D` auto-cleared back to `0x00` in internal eFlash).
@@ -231,11 +231,11 @@ Protocol (`0x02218..0x022fe`): Bank `0..7` (`0xF02290`), start reg (`0xF02291`),
    - **Runtime Defaults Cache (`0x050000`, `0x105a2..0x105ec`)**: Loads 4 KiB into `0x86000..0x86FFF` (including the `20%` PWM floor at `0x86010..13` and `0x10070` Custom `4` PL table at `0x86900`). Checks CRC-16 **and** `[0x86004] == 7`; bumping `7 → 8` at `0x1046C`, `0x104FC`, `0x105CC`, `0x10606` triggers automatic rebuild and re-CRC.
 
 ### Reference EC Mods Implemented in This Repository (`RZ09-0328 EC v01.00`)
-1. **v1 Mod (`ec_research/patch_ec_fan_range.py --mirror-flag-ff`, Live-Verified)**:
+1. **v1 Mod (`ec_tools/patch_ec_fan_range.py --mirror-flag-ff`, Live-Verified)**:
    - 118-byte diff (`100` table bytes + `17` cache-version code bytes + `1` mirror header byte `0x0008D = 0xFF`).
    - Unlocks manual fan clamps to **`0–5500 RPM`** across all 8 modes × all 4 SKU banks (default seeds preserved) and bumps `0x3FE000` cache version `2 → 3`.
    - Live-verified via `ec_sio_probe.py --verify-live` (`FLHCTRL3R = 0x88`, `sram_cache_version = 3`, `sram_active_manual_min_rpm = 0`, `max = 5500`) and live HID testing (`0 RPM` stop through `5500 RPM` across Gaming / Custom / Silent).
-2. **v2 Mod (`ec_research/patch_ec_v2_power_fan.py`, NDS32 Emulator-Verified)**:
+2. **v2 Mod (`ec_tools/patch_ec_v2_power_fan.py`, NDS32 Emulator-Verified)**:
    - 571-byte diff verified offline via a built-in instruction-level `NDS32` emulator:
      - Manual fan clamps **`0–5500 RPM`** across all modes.
      - **Silent (`5/6/7`)**: AC, DC, and thermal fallback CPU TDP lowered to **`25 W PL1 / 35 W PL2`**.

@@ -1,0 +1,62 @@
+{
+  "mode": "offline_check",
+  "driver_opened": false,
+  "hardware_accessed": false,
+  "package_files": [
+    {
+      "file": "C:\\Users\\ygp37\\Documents\\ChatGPT\\Razer Blade Fan Control\\diagnostics\\tools\\pawnio\\LpcACPIEC.bin",
+      "sha256": "c38fd116e7aff4d1fdb0a494e296be0a6708e5a22fc72f14587442fb7f8f7906",
+      "matches_pinned_release": true
+    },
+    {
+      "file": "C:\\Users\\ygp37\\Documents\\ChatGPT\\Razer Blade Fan Control\\diagnostics\\tools\\pawnio\\release_0_2_12.zip",
+      "sha256": "09698897ce19b92f1043a2e322cfcf0b1fe823e0b576971b178a65244fb0af9d",
+      "matches_pinned_release": true
+    },
+    {
+      "file": "C:\\Users\\ygp37\\Documents\\ChatGPT\\Razer Blade Fan Control\\diagnostics\\tools\\pawnio\\PawnIO_setup.exe",
+      "sha256": "1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032",
+      "matches_pinned_release": true
+    }
+  ],
+  "c_api_declarations_valid": true,
+  "source_files": [
+    {
+      "file": "PawnIOLib.h",
+      "source_url": "https://raw.githubusercontent.com/namazso/PawnIO/9d52965895588b0ffa3703b72eec75ba19f4ccc0/PawnIOLib/include/PawnIOLib.h",
+      "matches_recorded_sha256": true
+    },
+    {
+      "file": "PawnIOLib.cpp",
+      "source_url": "https://raw.githubusercontent.com/namazso/PawnIO/9d52965895588b0ffa3703b72eec75ba19f4ccc0/PawnIOLib/PawnIOLib.cpp",
+      "matches_recorded_sha256": true
+    },
+    {
+      "file": "pawnio_um.h",
+      "source_url": "https://raw.githubusercontent.com/namazso/PawnIO/9d52965895588b0ffa3703b72eec75ba19f4ccc0/PawnIO/include/pawnio_um.h",
+      "matches_recorded_sha256": true
+    },
+    {
+      "file": "LpcACPIEC.p",
+      "source_url": "https://raw.githubusercontent.com/namazso/PawnIO.Modules/40a95f0c812b09f78e05b2d5aa4614cbcef67b0a/LpcACPIEC.p",
+      "matches_recorded_sha256": true
+    }
+  ],
+  "module_interface_valid": true,
+  "simulated_register_reads": 256,
+  "passed": true,
+  "installed": {
+    "installed": false,
+    "reason": "Official PawnIO is not installed/usable: [WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002"
+  },
+  "transaction": {
+    "command_port": "0x66",
+    "command": "0x80 READ only",
+    "address_port": "0x62",
+    "data_read_port": "0x62",
+    "registers": "0x00..0xFF once",
+    "inter_read_delay_ms": 20,
+    "no_ec_ram_writes": true,
+    "no_bank_changes": true
+  }
+}
